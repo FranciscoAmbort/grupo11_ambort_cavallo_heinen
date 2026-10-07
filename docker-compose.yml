@@ -18,13 +18,15 @@ services:
   app:
     build: .
     # --reload + volumen: los cambios en ./app se reflejan sin reconstruir la imagen
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Antes de arrancar aplica las migraciones pendientes de Alembic
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-monitor}
     ports:
       - "8000:8000"
     volumes:
       - ./app:/code/app
+      - ./alembic:/code/alembic
     depends_on:
       db:
         condition: service_healthy
