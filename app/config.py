@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # el servicio telegram.py verifica que no esté vacío antes de enviar.
     telegram_bot_token: str = ""
 
+    # Intervalo de chequeo del background worker en segundos
+    worker_interval_seconds: int = 60
+
 
 
 @lru_cache

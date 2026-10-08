@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -8,15 +9,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import engine, get_session
+from app.worker.checker import run_checker_loop
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Maneja el arranque y apagado de la app; al apagar cierra las conexiones a la base."""
+    """Maneja el arranque y apagado de la app; lanza el worker en segundo plano y cierra conexiones."""
+    # Arrancar tarea en segundo plano
+    worker_task = asyncio.create_task(run_checker_loop(interval_seconds=settings.worker_interval_seconds))
+    logger.info("Worker de monitoreo lanzado en segundo plano.")
+
     yield
+
+    # Shutdown limpio
+    logger.info("Cancelando worker de monitoreo...")
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        logger.info("Worker de monitoreo cancelado correctamente.")
+    except Exception as exc:
+        logger.warning("Excepción durante la cancelación del worker: %s", exc)
+
     await engine.dispose()
+    logger.info("Conexiones de base de datos cerradas.")
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
