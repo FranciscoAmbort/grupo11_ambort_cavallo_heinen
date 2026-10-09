@@ -7,6 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.alerts import router as alerts_router
+from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.config import settings
 from app.database import engine, get_session
@@ -41,6 +43,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(assets_router, prefix="/api/assets", tags=["assets"])
+app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])
 
 
 @app.get("/api/health", tags=["health"])
