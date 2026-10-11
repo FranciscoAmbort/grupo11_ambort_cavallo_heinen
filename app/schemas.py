@@ -22,6 +22,7 @@ class TelegramUpdateRequest(BaseModel):
 
 
 ALERT_TYPES = ("ABOVE", "BELOW", "PCT_CHANGE")
+ASSET_TYPES = ("stock", "cedear", "bond")
 
 
 class AssetOut(BaseModel):

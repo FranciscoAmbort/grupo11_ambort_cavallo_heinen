@@ -16,7 +16,9 @@ Funciones públicas:
 """
 
 import asyncio
+from collections import abc as collections_abc
 import logging
+import typing
 
 import httpx
 
@@ -139,45 +141,185 @@ async def get_ticker_price(
         return await _fetch(c)
 
 
-async def get_multiple_prices(tickers: list[str]) -> dict[str, float]:
-    """
-    Consulta los precios de múltiples activos en paralelo.
+# Endpoint público de CompararFondos para cotizaciones consolidadas de bonos BYMA
+_BONDS_API_URL = "https://compararfondos.com.ar/api/bonos"
 
-    Cumple con AGENTS.md §5.1 (Fase B de ingesta):
-      - Un único AsyncClient compartido reutiliza el pool de conexiones HTTP.
-      - asyncio.gather lanza todas las corrutinas simultáneamente (O(1) en
-        tiempo de espera, independiente del número de tickers).
-      - Los tickers sin precio o con error se omiten del resultado.
+
+async def fetch_bonds_prices(tickers: list[str]) -> dict[str, float]:
+    """
+    Consulta cotizaciones consolidadas de bonos soberanos en la API de CompararFondos.
 
     Parámetros:
-      tickers – Lista de símbolos a consultar (puede estar vacía).
+      tickers – Lista de tickers solicitados (ej: ["AL30", "GD30", "AE38"]).
 
     Retorna:
-      Diccionario {ticker: precio} con solo los tickers que devolvieron
-      un precio válido. Los fallidos no aparecen (no None).
+      Diccionario {ticker: precio} con los bonos encontrados y precio numérico válido.
     """
     if not tickers:
         return {}
 
-    async with httpx.AsyncClient() as client:
-        # Lanza todas las peticiones en paralelo.
-        # asyncio.gather devuelve los resultados en el mismo orden que las corrutinas.
-        results: list[float | None] = await asyncio.gather(
-            *[get_ticker_price(ticker, client=client) for ticker in tickers]
+    # Normalizar tickers solicitados (ej: "AL30.BA" -> "AL30", "al30" -> "AL30")
+    req_map = {t: t.replace(".BA", "").strip().upper() for t in tickers}
+    normalized_needed = set(req_map.values())
+
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.get(_BONDS_API_URL, headers={"User-Agent": "Mozilla/5.0"})
+            response.raise_for_status()
+            data = response.json()
+    except httpx.TimeoutException:
+        logger.warning("Timeout al consultar la API de bonos compararfondos.com.ar.")
+        return {}
+    except httpx.HTTPStatusError as exc:
+        logger.warning("Error HTTP %s al consultar bonos: %s", exc.response.status_code, exc.response.text[:200])
+        return {}
+    except httpx.RequestError as exc:
+        logger.warning("Error de red al consultar la API de bonos: %s", exc)
+        return {}
+    except Exception as exc:
+        logger.warning("Error inesperado procesando respuesta de bonos: %s", exc)
+        return {}
+
+    bonds_list = data.get("bonds", [])
+    if not isinstance(bonds_list, list):
+        logger.warning("Formato inesperado en respuesta de bonos (falta lista 'bonds').")
+        return {}
+
+    found_by_normalized: dict[str, float] = {}
+
+    for bond in bonds_list:
+        if not isinstance(bond, dict):
+            continue
+        ticker_item = str(bond.get("ticker", "")).strip().upper()
+        ticker_base = str(bond.get("tickerBase", "")).strip().upper()
+        raw_price = bond.get("precio")
+
+        if raw_price is None:
+            continue
+
+        try:
+            price_val = float(raw_price)
+        except (ValueError, TypeError):
+            continue
+
+        for norm in normalized_needed:
+            # Coincidencia exacta de ticker base (ej. "AL30") o ticker con sufijo (ej. "AL30D", "AL30")
+            if ticker_base == norm or ticker_item == norm or ticker_item.startswith(norm):
+                # Si aún no lo tenemos, o si encontramos una variante preferida en MEP ("D")
+                if norm not in found_by_normalized:
+                    found_by_normalized[norm] = price_val
+                elif ticker_item.endswith("D"):  # Preferencia por cotización en moneda MEP
+                    found_by_normalized[norm] = price_val
+
+    # Reconstruir diccionario usando el ticker original recibido
+    results: dict[str, float] = {}
+    for original_t, norm in req_map.items():
+        if norm in found_by_normalized:
+            results[original_t] = found_by_normalized[norm]
+
+    return results
+
+
+async def get_multiple_prices(
+    tickers: dict[str, str] | typing.Iterable[tuple[str, str] | typing.Sequence[str]],
+) -> dict[str, float]:
+    """
+    Consulta los precios de múltiples activos en paralelo utilizando Multi-Provider Strategy:
+      - Activos bond -> fetch_bonds_prices (CompararFondos API)
+      - Activos stock / cedear -> Yahoo Finance API
+
+    Parámetros:
+      tickers – Mapeo {ticker: asset_type} o iterable de pares (ticker, asset_type)
+                (soporta tuplas, listas, objetos Row de SQLAlchemy o cualquier secuencia de 2 elementos).
+
+    Retorna:
+      Diccionario {ticker: precio} con solo los tickers que devolvieron un precio válido.
+    """
+    if not tickers:
+        return {}
+
+    # Normalizar a diccionario {ticker: asset_type}
+    assets_map: dict[str, str] = {}
+    original_input_count = 0
+
+    if isinstance(tickers, dict):
+        original_input_count = len(tickers)
+        for k, v in tickers.items():
+            if isinstance(k, str) and isinstance(v, str):
+                assets_map[k] = v
+            else:
+                logger.warning("Elemento inválido en diccionario de tickers descartado: key=%r, value=%r", k, v)
+    else:
+        # Iterable de elementos (pares o strings)
+        for item in tickers:
+            original_input_count += 1
+            if isinstance(item, str):
+                t_upper = item.upper().replace(".BA", "")
+                inferred_type = "bond" if t_upper in ("AL30", "GD30", "AE38") else "stock"
+                assets_map[item] = inferred_type
+                continue
+
+            # Intentar desempaquetar o indexar como par (ticker, asset_type)
+            # Soporta tuple, list, SQLAlchemy Row o cualquier secuencia/iterable de 2 elementos
+            is_valid_pair = False
+            try:
+                if len(item) == 2:  # type: ignore
+                    t, a_type = item[0], item[1]  # type: ignore
+                    if isinstance(t, str) and isinstance(a_type, str):
+                        assets_map[t] = a_type
+                        is_valid_pair = True
+                    else:
+                        logger.warning("Elemento descartado en tickers (los valores del par deben ser strings): %r", item)
+                        continue
+            except (TypeError, IndexError, KeyError):
+                pass
+
+            if not is_valid_pair:
+                logger.warning(
+                    "Elemento descartado en tickers (se esperaba par (ticker, asset_type) o string): %r (tipo %s)",
+                    item,
+                    type(item).__name__,
+                )
+
+    if not assets_map:
+        if original_input_count > 0:
+            logger.warning(
+                "Se recibieron %d elementos en get_multiple_prices pero ninguno cumplió con el formato esperado.",
+                original_input_count,
+            )
+        return {}
+
+    stocks_tickers: list[str] = [t for t, t_type in assets_map.items() if t_type != "bond"]
+    bonds_tickers: list[str] = [t for t, t_type in assets_map.items() if t_type == "bond"]
+
+    async def _fetch_yahoo() -> dict[str, float]:
+        if not stocks_tickers:
+            return {}
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            results = await asyncio.gather(
+                *[get_ticker_price(ticker, client=client) for ticker in stocks_tickers]
+            )
+        return {t: p for t, p in zip(stocks_tickers, results) if p is not None}
+
+    # Despachar ambas llamadas en paralelo con asyncio.gather
+    yahoo_future = _fetch_yahoo()
+    bonds_future = fetch_bonds_prices(bonds_tickers)
+
+    yahoo_res, bonds_res = await asyncio.gather(yahoo_future, bonds_future)
+
+    unified: dict[str, float] = {**yahoo_res, **bonds_res}
+
+    # Evaluar tickers faltantes contra los tickers válidos normalizados
+    if len(unified) < len(assets_map):
+        missing = [t for t in assets_map if t not in unified]
+        logger.warning(
+            "Sin precio para %d de %d tickers solicitados: %s",
+            len(missing),
+            len(assets_map),
+            missing,
         )
 
-    # Filtra los tickers que devolvieron None (error o sin datos)
-    prices: dict[str, float] = {
-        ticker: price
-        for ticker, price in zip(tickers, results)
-        if price is not None
-    }
-
-    if len(prices) < len(tickers):
-        failed = [t for t in tickers if t not in prices]
-        logger.warning("Sin precio para los siguientes tickers: %s", failed)
-
-    return prices
+    return unified
 
 
 # ── Prueba rápida en consola ──────────────────────────────────────────────────
@@ -194,13 +336,21 @@ if __name__ == "__main__":
             print("  GGAL.BA → sin datos (mercado cerrado o ticker inválido)")
 
         print()
-        print("── Prueba de consulta múltiple (paralela) ─────────────────")
-        tickers = ["GGAL.BA", "YPFD.BA", "AL30.BA", "AAPL.BA", "TICKER_INVALIDO"]
-        precios = await get_multiple_prices(tickers)
-        for t in tickers:
+        print("── Prueba de consulta múltiple (multi-proveedor) ─────────")
+        items = [
+            ("GGAL.BA", "stock"),
+            ("YPFD.BA", "stock"),
+            ("AAPL.BA", "cedear"),
+            ("AL30", "bond"),
+            ("GD30", "bond"),
+            ("AE38", "bond"),
+            ("TICKER_INVALIDO", "stock"),
+        ]
+        precios = await get_multiple_prices(items)
+        for t, atype in items:
             if t in precios:
-                print(f"  {t:<20} → ${precios[t]:,.4f} ARS")
+                print(f"  {t:<18} ({atype:<6}) → ${precios[t]:,.4f}")
             else:
-                print(f"  {t:<20} → sin datos")
+                print(f"  {t:<18} ({atype:<6}) → sin datos")
 
     _asyncio.run(_demo())

@@ -10,8 +10,8 @@ from app.schemas import AssetOut, PriceHistoryPoint, UserAssetAddRequest
 
 router = APIRouter()
 
-# Regla de negocio: no se soportan bonos.
-VALID_ASSET_TYPES = ("stock", "cedear")
+# Activos soportados: acciones BYMA, CEDEARs y bonos soberanos
+VALID_ASSET_TYPES = ("stock", "cedear", "bond")
 
 
 def _latest_price_subquery():

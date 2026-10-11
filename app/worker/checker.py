@@ -38,38 +38,40 @@ async def check_market_and_evaluate_alerts() -> None:
     """
     async with async_session_maker() as session:
         # ─────────────────────────────────────────────────────────────────────
-        # FASE 1: Deduplicación de tickers a consultar
+        # FASE 1: Deduplicación de tickers a consultar (ticker y asset_type)
         # ─────────────────────────────────────────────────────────────────────
-        # Tickers de activos que están en carteras de usuarios (user_assets)
+        # Activos en carteras de usuarios (user_assets)
         stmt_user_assets = (
-            select(distinct(Asset.ticker))
+            select(distinct(Asset.ticker), Asset.asset_type)
             .join(UserAsset, UserAsset.asset_id == Asset.id)
             .where(Asset.is_active.is_(True))
         )
         res_ua = await session.execute(stmt_user_assets)
-        tickers_user_assets = set(res_ua.scalars().all())
+        assets_map: dict[str, str] = dict(res_ua.all())
 
-        # Tickers de activos con alertas activas
+        # Activos con alertas activas
         stmt_alerts = (
-            select(distinct(Asset.ticker))
+            select(distinct(Asset.ticker), Asset.asset_type)
             .join(Alert, Alert.asset_id == Asset.id)
             .where(Alert.is_active.is_(True), Asset.is_active.is_(True))
         )
         res_al = await session.execute(stmt_alerts)
-        tickers_alerts = set(res_al.scalars().all())
+        assets_map.update(dict(res_al.all()))
 
-        unique_tickers = list(tickers_user_assets | tickers_alerts)
-
-        if not unique_tickers:
+        if not assets_map:
             logger.debug("No hay tickers seguidos ni alertas activas para consultar.")
             return
 
-        logger.info("Fase 1: %d tickers únicos detectados para monitoreo: %s", len(unique_tickers), unique_tickers)
+        logger.info(
+            "Fase 1: %d activos únicos detectados para monitoreo: %s",
+            len(assets_map),
+            list(assets_map.keys()),
+        )
 
         # ─────────────────────────────────────────────────────────────────────
-        # FASE 2: Ingesta concurrente de cotizaciones vía Yahoo Finance
+        # FASE 2: Ingesta concurrente de cotizaciones (Multi-Proveedor)
         # ─────────────────────────────────────────────────────────────────────
-        prices_map: dict[str, float] = await get_multiple_prices(unique_tickers)
+        prices_map: dict[str, float] = await get_multiple_prices(assets_map)
         if not prices_map:
             logger.warning("Fase 2: No se obtuvieron cotizaciones en este ciclo.")
             return
