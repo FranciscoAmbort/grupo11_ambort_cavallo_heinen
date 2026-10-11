@@ -8,22 +8,30 @@ from app.database import async_session_maker, engine
 from app.models import Asset
 
 SEED_ASSETS = [
-    {"ticker": "GGAL.BA", "name": "Grupo Financiero Galicia", "asset_type": "stock"},
-    {"ticker": "YPFD.BA", "name": "YPF S.A.", "asset_type": "stock"},
-    {"ticker": "PAMP.BA", "name": "Pampa Energía", "asset_type": "stock"},
-    {"ticker": "ALUA.BA", "name": "Aluar Aluminio Argentino", "asset_type": "stock"},
-    {"ticker": "AL30", "name": "Bonos de la República Argentina USD 2030 L.A.", "asset_type": "bond"},
-    {"ticker": "GD30", "name": "Bonos Globales de la República Argentina USD 2030", "asset_type": "bond"},
-    {"ticker": "AE38", "name": "Bonos de la República Argentina USD 2038 L.A.", "asset_type": "bond"},
-    {"ticker": "AAPL.BA", "name": "CEDEAR Apple Inc.", "asset_type": "cedear"},
-    {"ticker": "MELI.BA", "name": "CEDEAR MercadoLibre Inc.", "asset_type": "cedear"},
-    {"ticker": "TSLA.BA", "name": "CEDEAR Tesla Inc.", "asset_type": "cedear"},
+    {"ticker": "GGAL.BA", "name": "Grupo Financiero Galicia", "asset_type": "stock", "currency": "ARS"},
+    {"ticker": "YPFD.BA", "name": "YPF S.A.", "asset_type": "stock", "currency": "ARS"},
+    {"ticker": "PAMP.BA", "name": "Pampa Energía", "asset_type": "stock", "currency": "ARS"},
+    {"ticker": "ALUA.BA", "name": "Aluar Aluminio Argentino", "asset_type": "stock", "currency": "ARS"},
+    {"ticker": "AL30", "name": "Bonos de la República Argentina USD 2030 L.A.", "asset_type": "bond", "currency": "USD"},
+    {"ticker": "GD30", "name": "Bonos Globales de la República Argentina USD 2030", "asset_type": "bond", "currency": "USD"},
+    {"ticker": "AE38", "name": "Bonos de la República Argentina USD 2038 L.A.", "asset_type": "bond", "currency": "USD"},
+    {"ticker": "AAPL.BA", "name": "CEDEAR Apple Inc.", "asset_type": "cedear", "currency": "ARS"},
+    {"ticker": "MELI.BA", "name": "CEDEAR MercadoLibre Inc.", "asset_type": "cedear", "currency": "ARS"},
+    {"ticker": "TSLA.BA", "name": "CEDEAR Tesla Inc.", "asset_type": "cedear", "currency": "ARS"},
 ]
 
 
 async def seed_assets() -> int:
-    """Inserta los activos de prueba que todavía no existan y devuelve cuántos agregó."""
-    stmt = insert(Asset).values(SEED_ASSETS).on_conflict_do_nothing(index_elements=["ticker"]).returning(Asset.id)
+    """Inserta los activos de prueba que todavía no existan y actualiza currency si ya existen."""
+    insert_stmt = insert(Asset).values(SEED_ASSETS)
+    stmt = insert_stmt.on_conflict_do_update(
+        index_elements=["ticker"],
+        set_={
+            "name": insert_stmt.excluded.name,
+            "asset_type": insert_stmt.excluded.asset_type,
+            "currency": insert_stmt.excluded.currency,
+        },
+    ).returning(Asset.id)
     async with async_session_maker() as session:
         result = await session.execute(stmt)
         await session.commit()

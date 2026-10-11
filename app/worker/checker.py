@@ -141,6 +141,8 @@ async def check_market_and_evaluate_alerts() -> None:
             should_trigger = False
             message = ""
 
+            curr = getattr(asset, "currency", "ARS") or "ARS"
+
             # ── 1. Alertas de Umbral Fijo (price_max / price_min) - One-Shot ────
             if alert_type == "price_max":
                 if current_price >= threshold:
@@ -148,8 +150,8 @@ async def check_market_and_evaluate_alerts() -> None:
                     message = (
                         f"🎯 <b>Alerta Take Profit / Techo Superado</b>\n"
                         f"Activo: <b>{asset.ticker}</b> ({asset.name})\n"
-                        f"Precio actual: <b>${current_price:,.2f} ARS</b>\n"
-                        f"Umbral fijado: <b>${threshold:,.2f} ARS</b>"
+                        f"Precio actual: <b>${current_price:,.2f} {curr}</b>\n"
+                        f"Umbral fijado: <b>${threshold:,.2f} {curr}</b>"
                     )
             elif alert_type == "price_min":
                 if current_price <= threshold:
@@ -157,8 +159,8 @@ async def check_market_and_evaluate_alerts() -> None:
                     message = (
                         f"⚠️ <b>Alerta Stop Loss / Piso Alcanzado</b>\n"
                         f"Activo: <b>{asset.ticker}</b> ({asset.name})\n"
-                        f"Precio actual: <b>${current_price:,.2f} ARS</b>\n"
-                        f"Umbral fijado: <b>${threshold:,.2f} ARS</b>"
+                        f"Precio actual: <b>${current_price:,.2f} {curr}</b>\n"
+                        f"Umbral fijado: <b>${threshold:,.2f} {curr}</b>"
                     )
 
             if should_trigger and alert_type in ("price_max", "price_min"):
@@ -208,8 +210,8 @@ async def check_market_and_evaluate_alerts() -> None:
                             f"{emoji} <b>Alerta de Variación Porcentual</b>\n"
                             f"Activo: <b>{asset.ticker}</b> ({asset.name})\n"
                             f"Variación: <b>{pct_change:.2f}%</b> ({direccion})\n"
-                            f"Precio actual: <b>${current_price:,.2f} ARS</b>\n"
-                            f"Precio referencia anterior: <b>${ref_price:,.2f} ARS</b>\n"
+                            f"Precio actual: <b>${current_price:,.2f} {curr}</b>\n"
+                            f"Precio referencia anterior: <b>${ref_price:,.2f} {curr}</b>\n"
                             f"Umbral: <b>{threshold:.2f}%</b>"
                         )
                         # Re-anclaje continuo

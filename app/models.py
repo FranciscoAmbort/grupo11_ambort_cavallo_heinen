@@ -27,6 +27,7 @@ class Asset(Base):
     name: Mapped[str] = mapped_column(String(150))
     # 'stock' (acción), 'bond' (bono) o 'cedear'
     asset_type: Mapped[str] = mapped_column(String(20), index=True)
+    currency: Mapped[str] = mapped_column(String(10), default="ARS", server_default="ARS")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
 
 

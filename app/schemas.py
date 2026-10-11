@@ -32,6 +32,7 @@ class AssetOut(BaseModel):
     ticker: str
     name: str
     asset_type: str
+    currency: str = "ARS"
     current_price: float | None = None
 
 

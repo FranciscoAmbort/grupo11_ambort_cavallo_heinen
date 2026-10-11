@@ -33,6 +33,7 @@ def _to_asset_out(asset: Asset, price) -> AssetOut:
         ticker=asset.ticker,
         name=asset.name,
         asset_type=asset.asset_type,
+        currency=getattr(asset, "currency", "ARS") or "ARS",
         current_price=float(price) if price is not None else None,
     )
 
