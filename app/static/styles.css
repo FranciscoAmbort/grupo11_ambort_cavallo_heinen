@@ -383,3 +383,232 @@
     animation: none;
   }
 }
+
+/* ───────────── Dashboard ───────────── */
+
+/* Barra de scroll discreta para las dos columnas */
+.db-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+.db-campo {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.db-campo::placeholder {
+  color: #64748b;
+}
+
+.db-campo:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+
+.db-btn-borde {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8125rem;
+  color: #e2e8f0;
+  transition: background-color 0.15s ease;
+}
+
+.db-btn-borde:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Pestañas y selector de rango: mismo patrón de botón dentro de una pista */
+.db-tab,
+.db-rango {
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #94a3b8;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.db-tab:hover,
+.db-rango:hover {
+  color: #e2e8f0;
+}
+
+.db-tab[aria-selected="true"],
+.db-rango[aria-pressed="true"] {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+/* Píldoras de categoría */
+.db-chip {
+  border: 1px solid #334155;
+  border-radius: 9999px;
+  padding: 0.25rem 0.8rem;
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.db-chip:hover {
+  color: #e2e8f0;
+}
+
+.db-chip[aria-pressed="true"] {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: #6366f1;
+  color: #c7d2fe;
+}
+
+/* Ítem de la lista de activos */
+.db-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #1e293b;
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+button.db-item:hover {
+  border-color: #475569;
+}
+
+.db-item[aria-current="true"] {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.14);
+  box-shadow: inset 3px 0 0 #6366f1;
+}
+
+.db-item-ticker {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.db-item-nombre {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-item-precio {
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.db-item-precio[data-vacio="true"] {
+  font-weight: 400;
+  color: #64748b;
+}
+
+/* Etiquetas de categoría y divisa */
+.db-badge {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: #334155;
+  color: #cbd5e1;
+}
+
+.db-badge[data-tipo="stock"] {
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+}
+
+.db-badge[data-tipo="bond"] {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fcd34d;
+}
+
+.db-badge[data-tipo="cedear"] {
+  background: rgba(192, 132, 252, 0.16);
+  color: #d8b4fe;
+}
+
+/* Botón Seguir / Siguiendo del catálogo */
+.db-btn-seguir {
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid #6366f1;
+  background: #6366f1;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #ffffff;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.db-btn-seguir:hover {
+  background: #4f46e5;
+  border-color: #4f46e5;
+}
+
+.db-btn-seguir[data-siguiendo="true"] {
+  border-color: #475569;
+  background: transparent;
+  color: #cbd5e1;
+}
+
+.db-btn-seguir[data-siguiendo="true"]:hover {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+.db-btn-seguir:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* Indicador de variación porcentual */
+.db-var {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.db-var:empty {
+  display: none;
+}
+
+.db-var[data-signo="sube"] {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.db-var[data-signo="baja"] {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.db-var[data-signo="neutro"] {
+  background: #334155;
+  color: #cbd5e1;
+}

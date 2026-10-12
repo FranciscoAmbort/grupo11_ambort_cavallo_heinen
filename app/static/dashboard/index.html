@@ -4,40 +4,153 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MonitorPrecios — Dashboard</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Sora:wght@600;800&display=swap"
+      rel="stylesheet"
+    />
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/styles.css" />
+
+    <!-- Chart.js para el gráfico de cotización -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   </head>
-  <body class="flex min-h-screen items-center justify-center bg-[#0f172a] px-4 text-slate-200">
-    <!-- Página provisoria: confirma que la sesión funciona hasta que se implemente la pantalla real -->
-    <main class="w-full max-w-sm rounded-2xl border border-[#24304a] bg-[#131d33] px-8 py-10 text-center">
-      <h1 class="text-xl font-semibold text-white">Dashboard</h1>
-      <p id="estado" class="mt-3 text-sm text-slate-400">Verificando sesión...</p>
-      <button id="salir" class="mt-6 hidden rounded-lg border border-[#24304a] px-4 py-2 text-sm text-slate-200 hover:bg-white/5">
-        Cerrar sesión
-      </button>
-    </main>
-    <script>
-      /** Muestra quién inició sesión, o vuelve al login si no hay sesión. */
-      async function mostrarSesion() {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
-        if (!res.ok) {
-          window.location.href = "/";
-          return;
-        }
-        const user = await res.json();
-        document.getElementById("estado").textContent =
-          "Sesión iniciada como " + user.email + ". Esta pantalla todavía no está implementada.";
-        document.getElementById("salir").classList.remove("hidden");
-      }
 
-      /** Cierra la sesión y vuelve al login. */
-      async function cerrarSesion() {
-        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-        window.location.href = "/";
-      }
+  <body class="bg-[#090d16] font-sans text-slate-200 antialiased lg:h-screen lg:overflow-hidden">
+    <div class="flex min-h-screen flex-col lg:h-screen">
+      <!-- Barra superior -->
+      <header class="flex h-14 flex-shrink-0 items-center justify-between border-b border-slate-700 bg-[#0f172a] px-4 sm:px-6">
+        <a href="/dashboard" class="font-marca text-lg font-semibold tracking-tight text-white">MonitorPrecios</a>
+        <div class="flex items-center gap-3">
+          <span id="usuario-email" class="hidden max-w-[14rem] truncate text-sm text-slate-400 sm:inline"></span>
+          <button id="btn-salir" type="button" class="db-btn-borde">Cerrar sesión</button>
+        </div>
+      </header>
 
-      document.getElementById("salir").addEventListener("click", cerrarSesion);
-      mostrarSesion();
-    </script>
+      <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <!-- ───────────── Columna izquierda: cartera y catálogo ───────────── -->
+        <aside class="flex flex-col border-b border-slate-700 bg-[#0f172a] lg:w-96 lg:flex-shrink-0 lg:border-b-0 lg:border-r" aria-label="Activos">
+          <div class="space-y-3 px-4 pt-4">
+            <!-- Pestañas -->
+            <div class="grid grid-cols-2 gap-1 rounded-lg bg-slate-800 p-1" role="tablist" aria-label="Listado de activos">
+              <button id="tab-mine" type="button" role="tab" class="db-tab" data-tab="mine" aria-selected="true" aria-controls="lista-activos">
+                Mi seguimiento
+              </button>
+              <button id="tab-catalog" type="button" role="tab" class="db-tab" data-tab="catalog" aria-selected="false" aria-controls="lista-activos">
+                Agregar / quitar activos
+              </button>
+            </div>
+
+            <!-- Buscador -->
+            <div class="relative">
+              <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <circle cx="9" cy="9" r="6" />
+                <path d="m14 14 4 4" />
+              </svg>
+              <label for="buscador" class="sr-only">Buscar por ticker o nombre</label>
+              <input id="buscador" type="search" placeholder="Buscar por ticker o nombre" class="db-campo w-full pl-9" />
+            </div>
+
+            <!-- Filtros por categoría -->
+            <div id="filtros" class="flex flex-wrap gap-2" role="group" aria-label="Filtrar por categoría">
+              <button type="button" class="db-chip" data-categoria="all" aria-pressed="true">Todos</button>
+              <button type="button" class="db-chip" data-categoria="stock" aria-pressed="false">Acciones</button>
+              <button type="button" class="db-chip" data-categoria="bond" aria-pressed="false">Bonos</button>
+              <button type="button" class="db-chip" data-categoria="cedear" aria-pressed="false">CEDEARs</button>
+            </div>
+          </div>
+
+          <!-- En pantallas angostas la lista se puede plegar para dejar lugar al gráfico -->
+          <button id="btn-plegar" type="button" class="mx-4 mt-3 flex items-center justify-between rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 lg:hidden" aria-expanded="true" aria-controls="lista-activos">
+            <span id="plegar-texto">Ocultar lista</span>
+            <svg id="plegar-icono" class="h-4 w-4 transition-transform" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m5 12 5-5 5 5" />
+            </svg>
+          </button>
+
+          <!-- Lista con scroll propio -->
+          <div id="lista-activos" role="tabpanel" class="db-scroll mt-3 max-h-80 min-h-0 flex-1 overflow-y-auto px-4 pb-4 lg:max-h-none"></div>
+        </aside>
+
+        <!-- ───────────── Columna derecha: cotización y gráfico ───────────── -->
+        <main class="db-scroll flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+          <!-- Se muestra cuando no hay ningún activo seleccionado -->
+          <div id="sin-seleccion" class="hidden flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+            <p class="text-base font-medium text-white">Elegí un activo para ver su cotización</p>
+            <p class="mt-2 max-w-sm text-sm text-slate-400">
+              Cuando sigas al menos un activo, acá vas a ver su precio y cómo fue cambiando.
+            </p>
+          </div>
+
+          <div id="detalle" class="hidden min-h-0 flex-1 flex-col">
+            <!-- Encabezado del activo -->
+            <div class="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
+              <div class="min-w-0">
+                <h1 id="detalle-ticker" class="font-marca text-3xl font-extrabold tracking-tight text-white"></h1>
+                <p id="detalle-nombre" class="mt-1 text-sm text-slate-400"></p>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                  <span id="detalle-categoria" class="db-badge"></span>
+                  <span id="detalle-divisa" class="db-badge" data-tipo="divisa"></span>
+                </div>
+              </div>
+
+              <div class="text-left sm:text-right">
+                <p id="detalle-precio" class="text-3xl font-bold tabular-nums text-white">—</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2 sm:justify-end">
+                  <span id="detalle-variacion" class="db-var" data-signo="neutro"></span>
+                  <span id="detalle-hora" class="text-sm text-slate-400"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Selector de rango -->
+            <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <div id="rangos" class="inline-flex rounded-lg bg-slate-800 p-1" role="group" aria-label="Rango de lecturas">
+                <button type="button" class="db-rango" data-limit="60" aria-pressed="true">Última hora</button>
+                <button type="button" class="db-rango" data-limit="240" aria-pressed="false">Últimas 4 horas</button>
+                <button type="button" class="db-rango" data-limit="1000" aria-pressed="false">Máximo disponible</button>
+              </div>
+              <p id="detalle-lecturas" class="text-xs text-slate-500"></p>
+            </div>
+
+            <!-- Gráfico y sus estados -->
+            <div class="relative mt-4 min-h-[320px] flex-1 rounded-xl border border-slate-700 bg-[#1e293b] p-3 sm:p-4">
+              <div id="grafico-cargando" class="absolute inset-0 z-10 hidden items-center justify-center gap-3 rounded-xl bg-[#1e293b]/80 text-sm text-slate-300">
+                <span class="spinner" aria-hidden="true"></span>
+                <span>Cargando lecturas...</span>
+              </div>
+
+              <div id="grafico-vacio" class="absolute inset-0 hidden flex-col items-center justify-center px-6 text-center">
+                <svg class="h-10 w-10 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+                <p class="mt-3 max-w-sm text-sm text-slate-300">
+                  Todavía no hay lecturas; el primer precio aparece en el próximo ciclo de monitoreo (hasta 1 minuto).
+                </p>
+              </div>
+
+              <div id="grafico-error" class="absolute inset-0 hidden flex-col items-center justify-center px-6 text-center">
+                <p id="grafico-error-texto" class="max-w-sm text-sm text-rose-200"></p>
+                <button id="btn-reintentar" type="button" class="db-btn-borde mt-4">Reintentar</button>
+              </div>
+
+              <div id="grafico-lienzo" class="h-full min-h-[290px]">
+                <canvas id="priceChart" role="img" aria-label="Gráfico de cotización del activo seleccionado"></canvas>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- Avisos de error o confirmación -->
+    <div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4" aria-live="assertive"></div>
+
+    <script src="/dashboard/dashboard.js"></script>
   </body>
 </html>
