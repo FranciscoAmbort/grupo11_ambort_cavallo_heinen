@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MonitorPrecios — Configuración</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Sora:wght@600;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+
+  <body class="min-h-screen bg-[#090d16] font-sans text-slate-200 antialiased">
+    <!-- Barra superior -->
+    <header class="flex h-14 items-center justify-between border-b border-slate-700 bg-[#0f172a] px-4 sm:px-6">
+      <div class="flex items-center gap-6">
+        <a href="/dashboard" class="hidden font-marca text-lg font-semibold tracking-tight text-white sm:inline">MonitorPrecios</a>
+        <nav class="flex items-center gap-1" aria-label="Secciones">
+          <a href="/dashboard" class="db-nav">Dashboard</a>
+          <a href="/alerts" class="db-nav">Alertas</a>
+          <a href="/settings" class="db-nav" aria-current="page">Perfil</a>
+        </nav>
+      </div>
+      <span id="usuario-email" class="hidden max-w-[14rem] truncate text-sm text-slate-400 md:inline"></span>
+    </header>
+
+    <main class="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+      <h1 class="font-marca text-2xl font-extrabold tracking-tight text-white">Configuración</h1>
+      <p class="mt-1 text-sm text-slate-400">Tu cuenta, el canal de avisos y las preferencias de la aplicación.</p>
+
+      <!-- Estado inicial mientras se carga el perfil -->
+      <div id="cargando" class="mt-10 flex items-center justify-center gap-3 text-sm text-slate-300">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Cargando tu perfil...</span>
+      </div>
+
+      <div id="contenido" class="mt-6 hidden space-y-5">
+        <!-- ───────────── 1. Perfil y cuenta de Google ───────────── -->
+        <section class="st-card" aria-labelledby="titulo-perfil">
+          <h2 id="titulo-perfil" class="st-titulo">Perfil y cuenta</h2>
+
+          <div class="mt-5 flex flex-wrap items-center gap-4">
+            <div id="avatar" class="st-avatar" aria-hidden="true"></div>
+            <div class="min-w-[9rem] flex-1">
+              <p id="perfil-nombre" class="truncate text-lg font-semibold text-white"></p>
+              <p id="perfil-email" class="truncate text-sm text-slate-400"></p>
+            </div>
+            <span class="inline-flex items-center gap-2 self-start rounded-full border border-slate-600 bg-[#0f172a] px-3 py-1 text-xs font-medium text-slate-200 max-sm:order-last">
+              <svg class="h-4 w-4" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 9.500c3.540 0 6.710 1.220 9.210 3.600l6.850-6.850C35.900 2.380 30.470 0 24 0 14.620 0 6.510 5.380 2.560 13.220l7.980 6.190C12.430 13.720 17.740 9.500 24 9.500z" />
+                <path fill="#4285F4" d="M46.980 24.550c0-1.570-.150-3.090-.380-4.550H24v9.020h12.940c-.580 2.960-2.260 5.480-4.780 7.180l7.730 6c4.510-4.180 7.090-10.360 7.090-17.650z" />
+                <path fill="#FBBC05" d="M10.530 28.590c-.480-1.450-.760-2.990-.760-4.590s.270-3.140.760-4.590l-7.980-6.190C.920 16.460 0 20.120 0 24c0 3.880.920 7.540 2.560 10.780l7.970-6.190z" />
+                <path fill="#34A853" d="M24 48c6.480 0 11.930-2.130 15.890-5.810l-7.730-6c-2.150 1.450-4.920 2.300-8.160 2.300-6.260 0-11.570-4.220-13.470-9.910l-7.980 6.190C6.510 42.620 14.620 48 24 48z" />
+              </svg>
+              Autenticado con Google
+            </span>
+          </div>
+
+          <dl class="mt-5 grid gap-4 border-t border-slate-700 pt-5 sm:grid-cols-2">
+            <div>
+              <dt class="text-xs text-slate-400">Estado de la cuenta</dt>
+              <dd class="mt-1 flex items-center gap-2 text-sm text-white">
+                <span class="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+                Activa
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-slate-400">Fecha de registro</dt>
+              <dd id="perfil-registro" class="mt-1 text-sm text-white"></dd>
+            </div>
+          </dl>
+          <p class="mt-4 text-xs text-slate-500">Tu nombre y tu correo vienen de tu cuenta de Google y no se editan desde acá.</p>
+        </section>
+
+        <!-- ───────────── 2. Canal de notificaciones (Telegram) ───────────── -->
+        <section class="st-card" aria-labelledby="titulo-telegram">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="titulo-telegram" class="st-titulo">Canal de notificaciones</h2>
+            <span id="telegram-badge" class="st-badge" data-estado="sin-vincular"></span>
+          </div>
+          <p id="telegram-resumen" class="mt-2 text-sm text-slate-400"></p>
+
+          <div class="mt-5 rounded-lg border border-slate-700 bg-[#0f172a] p-4 text-sm text-slate-300">
+            <p class="font-medium text-white">Cómo vincular Telegram</p>
+            <ol class="mt-2 list-decimal space-y-1 pl-5">
+              <li>Abrí el bot y tocá <span class="text-white">Iniciar</span>; sin ese paso, Telegram no nos deja escribirte.</li>
+              <li>Conseguí tu Chat ID: escribile a <span class="text-white">@userinfobot</span> y copiá el número que aparece como <span class="text-white">Id</span>.</li>
+              <li>Pegalo abajo y guardá.</li>
+            </ol>
+            <a id="link-bot" href="#" target="_blank" rel="noopener" class="al-btn-primario mt-3">Abrir el bot en Telegram</a>
+          </div>
+
+          <form id="form-telegram" class="mt-5" novalidate>
+            <label for="telegram-chat-id" class="etiqueta">Chat ID de Telegram</label>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <input id="telegram-chat-id" type="text" inputmode="numeric" autocomplete="off" placeholder="Ej.: 123456789" class="db-campo min-w-0 flex-1" />
+              <button id="btn-guardar-telegram" type="submit" class="al-btn-primario">Guardar cambios</button>
+            </div>
+            <p id="telegram-error" class="mt-2 hidden text-sm text-rose-300" role="alert"></p>
+          </form>
+
+          <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-700 pt-5">
+            <button id="btn-probar" type="button" class="db-btn-borde st-btn">Enviar mensaje de prueba</button>
+            <button id="btn-desvincular" type="button" class="st-btn-peligro">Desvincular</button>
+            <p id="prueba-resultado" class="basis-full text-sm" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <!-- ───────────── 3. Preferencias de la aplicación ───────────── -->
+        <section class="st-card" aria-labelledby="titulo-preferencias">
+          <h2 id="titulo-preferencias" class="st-titulo">Preferencias</h2>
+          <p class="mt-2 text-sm text-slate-400">Se guardan solo en este navegador.</p>
+
+          <div class="mt-5 space-y-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <label for="pref-divisa" class="etiqueta">Divisa del Dashboard</label>
+                <p class="mt-1 text-xs text-slate-400">Qué activos se listan al entrar al Dashboard.</p>
+              </div>
+              <select id="pref-divisa" class="db-campo">
+                <option value="todas">Todas</option>
+                <option value="ARS">Solo ARS</option>
+                <option value="USD">Solo USD</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- ───────────── 4. Sesión y zona crítica ───────────── -->
+        <section class="st-card st-card-peligro" aria-labelledby="titulo-sesion">
+          <h2 id="titulo-sesion" class="st-titulo">Sesión</h2>
+
+          <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="etiqueta">Cerrar sesión</p>
+              <p class="mt-1 text-xs text-slate-400">Salís de tu cuenta en este navegador y se borran las preferencias guardadas.</p>
+            </div>
+            <button id="btn-salir" type="button" class="st-btn-peligro">Cerrar sesión</button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Diálogo de confirmación reutilizable -->
+    <dialog id="modal-confirmar" class="al-modal al-modal-chico" aria-labelledby="confirmar-titulo">
+      <h2 id="confirmar-titulo" class="text-lg font-semibold text-white"></h2>
+      <p id="confirmar-texto" class="mt-2 text-sm text-slate-300"></p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button id="btn-confirmar-cancelar" type="button" class="db-btn-borde">Cancelar</button>
+        <button id="btn-confirmar-ok" type="button" class="al-btn-primario"></button>
+      </div>
+    </dialog>
+
+    <div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4" aria-live="assertive"></div>
+
+    <script src="/settings/settings.js"></script>
+  </body>
+</html>

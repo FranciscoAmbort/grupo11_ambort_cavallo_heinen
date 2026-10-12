@@ -23,6 +23,9 @@ const ONBOARDING_URL = "/onboarding";
 const REFRESH_INTERVAL_MS = 60000;
 const DEFAULT_LIMIT = 60;
 
+// Preferencia guardada en el navegador desde la pantalla Perfil (settings.js)
+const PREF_CURRENCY_KEY = "mp.pref.divisa";
+
 const CATEGORY_LABELS = { stock: "Acción", bond: "Bono", cedear: "CEDEAR" };
 const CURRENCY_SYMBOLS = { ARS: "$", USD: "US$" };
 
@@ -37,6 +40,7 @@ const state = {
   catalogLoaded: false,
   tab: "mine", // "mine" | "catalog"
   category: "all", // "all" | "stock" | "bond" | "cedear"
+  currency: "todas", // "todas" | "ARS" | "USD" (preferencia del usuario)
   search: "",
   selectedTicker: null,
   limit: DEFAULT_LIMIT,
@@ -154,9 +158,10 @@ function applyFilters(assets) {
   const query = state.search.trim().toLowerCase();
   return assets.filter((asset) => {
     const matchesCategory = state.category === "all" || asset.asset_type === state.category;
+    const matchesCurrency = state.currency === "todas" || asset.currency === state.currency;
     const matchesSearch =
       !query || asset.ticker.toLowerCase().includes(query) || asset.name.toLowerCase().includes(query);
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesCurrency && matchesSearch;
   });
 }
 
@@ -335,7 +340,9 @@ function ensureSelection() {
     return;
   }
 
-  selectAsset(state.myAssets[0].ticker);
+  // Se prefiere el primer activo que pasa la preferencia de divisa; si no hay, el primero de la cartera
+  const preferred = state.myAssets.find((asset) => state.currency === "todas" || asset.currency === state.currency);
+  selectAsset((preferred ?? state.myAssets[0]).ticker);
 }
 
 /** Selecciona un activo de la cartera, lo resalta en la lista y carga su historial. */
@@ -552,6 +559,24 @@ function setLimit(limit) {
 
 // ───────────────────────── Actualización automática ─────────────────────────
 
+/** Lee una preferencia de localStorage; si el navegador lo bloquea, devuelve el valor por defecto. */
+function readPref(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Aplica la preferencia de divisa a la lista y muestra el aviso con la opción de ver todas. */
+function setCurrency(currency) {
+  state.currency = ["ARS", "USD"].includes(currency) ? currency : "todas";
+  const filtering = state.currency !== "todas";
+  $("#aviso-divisa").classList.toggle("hidden", !filtering);
+  if (filtering) $("#aviso-divisa-texto").textContent = `Mostrando solo activos en ${state.currency}.`;
+  renderList();
+}
+
 /** Vuelve a pedir la cartera y el historial del activo seleccionado, sin indicadores de carga. */
 async function refresh() {
   // Con la pestaña del navegador oculta no se consulta; se retoma al volver
@@ -625,6 +650,7 @@ function bindEvents() {
     if (button) setLimit(Number(button.dataset.limit));
   });
 
+  $("#btn-ver-todas").addEventListener("click", () => setCurrency("todas"));
   $("#btn-reintentar").addEventListener("click", () => loadHistory());
   $("#btn-plegar").addEventListener("click", toggleListCollapsed);
   $("#btn-salir").addEventListener("click", logout);
@@ -655,7 +681,7 @@ async function init() {
     return;
   }
 
-  renderList();
+  setCurrency(readPref(PREF_CURRENCY_KEY, "todas"));
   ensureSelection();
   startAutoRefresh();
 }

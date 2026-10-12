@@ -908,3 +908,98 @@ button.db-item:hover {
     animation: none;
   }
 }
+
+/* ───────────── Pantalla de configuración y perfil ───────────── */
+
+.st-card {
+  border: 1px solid #334155;
+  border-radius: 14px;
+  background: #1e293b;
+  padding: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .st-card {
+    padding: 1.5rem;
+  }
+}
+
+.st-card-peligro {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.st-titulo {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Avatar con iniciales (o la foto de Google, si llega a estar disponible) */
+.st-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: #6366f1;
+  color: #ffffff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  overflow: hidden;
+}
+
+/* Estado del canal de Telegram */
+.st-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.st-badge[data-estado="conectado"] {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.st-badge[data-estado="sin-vincular"] {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fcd34d;
+}
+
+/* Botones secundarios de la pantalla, del mismo alto que los primarios */
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+.st-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.st-btn .spinner {
+  width: 14px;
+  height: 14px;
+}
+
+.st-btn-peligro {
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fca5a5;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.st-btn-peligro:hover {
+  background: #dc2626;
+  color: #ffffff;
+}

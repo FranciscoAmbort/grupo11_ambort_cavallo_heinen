@@ -29,6 +29,7 @@
           <nav class="flex items-center gap-1" aria-label="Secciones">
             <a href="/dashboard" class="db-nav" aria-current="page">Dashboard</a>
             <a href="/alerts" class="db-nav">Alertas</a>
+            <a href="/settings" class="db-nav">Perfil</a>
           </nav>
         </div>
         <div class="flex items-center gap-3">
@@ -68,6 +69,12 @@
               <button type="button" class="db-chip" data-categoria="bond" aria-pressed="false">Bonos</button>
               <button type="button" class="db-chip" data-categoria="cedear" aria-pressed="false">CEDEARs</button>
             </div>
+
+            <!-- Aviso cuando la preferencia de divisa (pantalla Perfil) está filtrando la lista -->
+            <p id="aviso-divisa" class="hidden text-xs text-slate-400">
+              <span id="aviso-divisa-texto"></span>
+              <button id="btn-ver-todas" type="button" class="ml-1 text-indigo-300 underline hover:text-indigo-200">Ver todas</button>
+            </p>
           </div>
 
           <!-- En pantallas angostas la lista se puede plegar para dejar lugar al gráfico -->

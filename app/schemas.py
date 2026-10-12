@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
@@ -19,10 +20,23 @@ class UserOut(BaseModel):
     name: str | None
     telegram_chat_id: str | None
     onboarding_completed: bool
+    created_at: datetime
 
 
 class TelegramUpdateRequest(BaseModel):
-    telegram_chat_id: str
+    # None o vacío desvincula Telegram
+    telegram_chat_id: str | None = None
+
+    @field_validator("telegram_chat_id")
+    @classmethod
+    def _validate_chat_id(cls, value: str | None) -> str | None:
+        """Convierte vacío en None y exige que el Chat ID sea numérico."""
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        if not re.fullmatch(r"-?\d{5,20}", value):
+            raise ValueError("El Chat ID de Telegram es un número, por ejemplo 123456789")
+        return value
 
 
 ALERT_TYPES = ("ABOVE", "BELOW", "PCT_CHANGE")

@@ -11,6 +11,7 @@ from app.config import settings
 from app.database import get_session
 from app.models import User
 from app.schemas import GoogleAuthRequest, TelegramUpdateRequest, UserOut
+from app.services.telegram import send_telegram_alert
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +99,34 @@ async def update_telegram(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> User:
-    """Actualiza el telegram_chat_id del usuario autenticado."""
+    """Guarda el telegram_chat_id del usuario autenticado, o lo desvincula si llega vacío."""
     current_user.telegram_chat_id = payload.telegram_chat_id
     session.add(current_user)
     await session.commit()
     await session.refresh(current_user)
     return current_user
+
+
+@router.post("/telegram/test")
+async def test_telegram(current_user: User = Depends(get_current_user)) -> dict[str, bool]:
+    """Envía un mensaje de prueba al Telegram vinculado para confirmar que el canal funciona."""
+    if not current_user.telegram_chat_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No tenés un Chat ID de Telegram guardado",
+        )
+
+    sent = await send_telegram_alert(
+        current_user.telegram_chat_id,
+        "✅ <b>Mensaje de prueba</b>\nTu canal de Telegram está bien vinculado con MonitorPrecios.",
+    )
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Telegram no pudo entregar el mensaje. Revisá que el Chat ID sea correcto "
+            "y que hayas abierto el bot y tocado Iniciar.",
+        )
+    return {"sent": True}
 
 
 @router.post("/logout")
