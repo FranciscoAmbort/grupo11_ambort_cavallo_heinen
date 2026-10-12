@@ -24,10 +24,16 @@
     <div class="flex min-h-screen flex-col lg:h-screen">
       <!-- Barra superior -->
       <header class="flex h-14 flex-shrink-0 items-center justify-between border-b border-slate-700 bg-[#0f172a] px-4 sm:px-6">
-        <a href="/dashboard" class="font-marca text-lg font-semibold tracking-tight text-white">MonitorPrecios</a>
+        <div class="flex items-center gap-6">
+          <a href="/dashboard" class="hidden font-marca text-lg font-semibold tracking-tight text-white sm:inline">MonitorPrecios</a>
+          <nav class="flex items-center gap-1" aria-label="Secciones">
+            <a href="/dashboard" class="db-nav" aria-current="page">Dashboard</a>
+            <a href="/alerts" class="db-nav">Alertas</a>
+          </nav>
+        </div>
         <div class="flex items-center gap-3">
-          <span id="usuario-email" class="hidden max-w-[14rem] truncate text-sm text-slate-400 sm:inline"></span>
-          <button id="btn-salir" type="button" class="db-btn-borde">Cerrar sesión</button>
+          <span id="usuario-email" class="hidden max-w-[14rem] truncate text-sm text-slate-400 md:inline"></span>
+          <button id="btn-salir" type="button" class="db-btn-borde whitespace-nowrap">Cerrar sesión</button>
         </div>
       </header>
 

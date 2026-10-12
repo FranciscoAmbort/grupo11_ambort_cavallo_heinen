@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.database import get_session
 from app.models import Alert, Asset, User
-from app.schemas import AlertCreateRequest, AlertOut
+from app.schemas import AlertCreateRequest, AlertOut, AlertUpdateRequest
 
 router = APIRouter()
 
@@ -70,6 +70,52 @@ async def create_alert(
         is_active=True,
     )
     session.add(alert)
+    await session.commit()
+    await session.refresh(alert)
+    return _to_alert_out(alert, ticker)
+
+
+@router.patch("/{alert_id}", response_model=AlertOut)
+async def update_alert(
+    alert_id: int,
+    payload: AlertUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> AlertOut:
+    """Pausa, reactiva o cambia la condición de una alerta del usuario; 404 si no existe o es de otro."""
+    row = (
+        await session.execute(
+            select(Alert, Asset.ticker)
+            .join(Asset, Asset.id == Alert.asset_id)
+            .where(Alert.id == alert_id, Alert.user_id == current_user.id)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada")
+    alert, ticker = row
+
+    changes_rule = any(v is not None for v in (payload.alert_type, payload.target_price, payload.threshold_percent))
+    if changes_rule:
+        api_type = payload.alert_type or DB_TO_API_TYPE[alert.alert_type]
+        value = payload.threshold_percent if api_type == "PCT_CHANGE" else payload.target_price
+        if value is None:
+            field = "threshold_percent" if api_type == "PCT_CHANGE" else "target_price"
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Para una alerta {api_type} hay que enviar {field}",
+            )
+        alert.alert_type = API_TO_DB_TYPE[api_type]
+        alert.threshold_value = Decimal(str(value))
+        # La condición cambió: la referencia de variación se vuelve a fijar en el próximo ciclo
+        alert.last_notified_price = None
+
+    if payload.is_active is not None and payload.is_active != alert.is_active:
+        alert.is_active = payload.is_active
+        if payload.is_active:
+            # Reactivar es volver a armar la alerta desde cero
+            alert.last_triggered_at = None
+            alert.last_notified_price = None
+
     await session.commit()
     await session.refresh(alert)
     return _to_alert_out(alert, ticker)

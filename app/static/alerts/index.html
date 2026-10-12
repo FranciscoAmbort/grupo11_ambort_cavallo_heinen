@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MonitorPrecios — Mis alertas</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Sora:wght@600;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+
+  <body class="min-h-screen bg-[#090d16] font-sans text-slate-200 antialiased">
+    <!-- Barra superior -->
+    <header class="flex h-14 items-center justify-between border-b border-slate-700 bg-[#0f172a] px-4 sm:px-6">
+      <div class="flex items-center gap-6">
+        <a href="/dashboard" class="hidden font-marca text-lg font-semibold tracking-tight text-white sm:inline">MonitorPrecios</a>
+        <nav class="flex items-center gap-1" aria-label="Secciones">
+          <a href="/dashboard" class="db-nav">Dashboard</a>
+          <a href="/alerts" class="db-nav" aria-current="page">Alertas</a>
+        </nav>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="usuario-email" class="hidden max-w-[14rem] truncate text-sm text-slate-400 md:inline"></span>
+        <button id="btn-salir" type="button" class="db-btn-borde whitespace-nowrap">Cerrar sesión</button>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <!-- Encabezado de la vista -->
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 class="font-marca text-2xl font-extrabold tracking-tight text-white">Mis Alertas</h1>
+          <p id="resumen" class="mt-1 text-sm text-slate-400" aria-live="polite"></p>
+        </div>
+        <button id="btn-nueva" type="button" class="al-btn-primario">+ Nueva Alerta</button>
+      </div>
+
+      <!-- Aviso si el usuario no tiene Telegram vinculado -->
+      <p id="aviso-telegram" class="mt-5 hidden rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+        No tenés Telegram vinculado: los avisos de tus alertas te van a llegar por correo.
+      </p>
+
+      <!-- Buscador y filtros -->
+      <div id="herramientas" class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="relative sm:w-72">
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="9" cy="9" r="6" />
+            <path d="m14 14 4 4" />
+          </svg>
+          <label for="buscador" class="sr-only">Buscar por ticker o nombre</label>
+          <input id="buscador" type="search" placeholder="Buscar por ticker o nombre" class="db-campo w-full pl-9" />
+        </div>
+        <div id="filtros" class="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
+          <button type="button" class="db-chip" data-estado="todas" aria-pressed="true">Todas</button>
+          <button type="button" class="db-chip" data-estado="activa" aria-pressed="false">Activas</button>
+          <button type="button" class="db-chip" data-estado="pausada" aria-pressed="false">Pausadas</button>
+          <button type="button" class="db-chip" data-estado="disparada" aria-pressed="false">Disparadas</button>
+        </div>
+      </div>
+
+      <!-- Lista de alertas (la arma alerts.js) -->
+      <div id="lista" class="mt-5 space-y-3"></div>
+    </main>
+
+    <!-- ───────────── Modal: crear / editar alerta ───────────── -->
+    <dialog id="modal-form" class="al-modal" aria-labelledby="form-titulo">
+      <form id="form-alerta" novalidate>
+        <h2 id="form-titulo" class="text-lg font-semibold text-white">Nueva alerta</h2>
+
+        <div class="mt-5 space-y-5">
+          <div>
+            <label for="campo-activo" class="etiqueta">Activo</label>
+            <select id="campo-activo" class="db-campo mt-2 w-full"></select>
+            <p id="ayuda-cotizacion" class="mt-2 text-xs text-slate-400"></p>
+          </div>
+
+          <fieldset>
+            <legend class="etiqueta">Condición</legend>
+            <div class="mt-2 grid gap-2">
+              <label class="al-opcion">
+                <input type="radio" name="tipo" value="ABOVE" checked />
+                <span>
+                  <span class="block font-medium text-white">Sube por encima de</span>
+                  <span class="block text-xs text-slate-400">Avisa si el precio supera el valor fijado.</span>
+                </span>
+              </label>
+              <label class="al-opcion">
+                <input type="radio" name="tipo" value="BELOW" />
+                <span>
+                  <span class="block font-medium text-white">Cae por debajo de</span>
+                  <span class="block text-xs text-slate-400">Avisa si el precio cae bajo el valor fijado.</span>
+                </span>
+              </label>
+              <label class="al-opcion">
+                <input type="radio" name="tipo" value="PCT_CHANGE" />
+                <span>
+                  <span class="block font-medium text-white">Variación porcentual</span>
+                  <span class="block text-xs text-slate-400">Avisa si el precio sube o baja ese porcentaje desde la referencia.</span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div>
+            <label for="campo-valor" id="etiqueta-valor" class="etiqueta">Precio objetivo</label>
+            <div class="mt-2 flex items-stretch">
+              <span id="unidad-valor" class="al-unidad">$</span>
+              <input id="campo-valor" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" class="db-campo min-w-0 flex-1 rounded-l-none" />
+            </div>
+            <p id="ayuda-distancia" class="mt-2 text-xs text-slate-400"></p>
+            <p id="error-valor" class="mt-2 hidden text-sm text-rose-300" role="alert"></p>
+          </div>
+        </div>
+
+        <div class="mt-7 flex justify-end gap-2">
+          <button id="btn-cancelar" type="button" class="db-btn-borde">Cancelar</button>
+          <button id="btn-guardar" type="submit" class="al-btn-primario">Guardar Alerta</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- ───────────── Modal: confirmar eliminación ───────────── -->
+    <dialog id="modal-eliminar" class="al-modal al-modal-chico" aria-labelledby="eliminar-titulo">
+      <h2 id="eliminar-titulo" class="text-lg font-semibold text-white">¿Eliminar esta alerta?</h2>
+      <p id="eliminar-texto" class="mt-2 text-sm text-slate-300"></p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button id="btn-eliminar-cancelar" type="button" class="db-btn-borde">Cancelar</button>
+        <button id="btn-eliminar-confirmar" type="button" class="al-btn-peligro">Eliminar</button>
+      </div>
+    </dialog>
+
+    <!-- ───────────── Modal: vista previa del aviso ───────────── -->
+    <dialog id="modal-preview" class="al-modal al-modal-chico" aria-labelledby="preview-titulo">
+      <h2 id="preview-titulo" class="text-lg font-semibold text-white">Así se va a ver el aviso</h2>
+      <p class="mt-1 text-xs text-slate-400">Ejemplo con valores de muestra. El mismo texto se envía por Telegram o por correo.</p>
+      <div class="mt-4 rounded-xl bg-[#17212b] p-3">
+        <div id="preview-mensaje" class="al-burbuja"></div>
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button id="btn-preview-cerrar" type="button" class="db-btn-borde">Cerrar</button>
+      </div>
+    </dialog>
+
+    <!-- Avisos de confirmación o error -->
+    <div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4" aria-live="assertive"></div>
+
+    <script src="/alerts/alerts.js"></script>
+  </body>
+</html>

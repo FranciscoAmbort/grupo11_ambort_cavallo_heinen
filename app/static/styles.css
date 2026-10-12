@@ -612,3 +612,299 @@ button.db-item:hover {
   background: #334155;
   color: #cbd5e1;
 }
+
+/* ───────────── Navegación entre pantallas ───────────── */
+
+.db-nav {
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.875rem;
+  color: #94a3b8;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.db-nav:hover {
+  color: #e2e8f0;
+}
+
+.db-nav[aria-current="page"] {
+  background: #1e293b;
+  color: #ffffff;
+}
+
+/* ───────────── Pantalla de alertas ───────────── */
+
+.al-btn-primario,
+.al-btn-peligro {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #ffffff;
+  transition: background-color 0.15s ease;
+}
+
+.al-btn-primario {
+  background: #6366f1;
+}
+
+.al-btn-primario:hover {
+  background: #4f46e5;
+}
+
+.al-btn-peligro {
+  background: #dc2626;
+}
+
+.al-btn-peligro:hover {
+  background: #b91c1c;
+}
+
+.al-btn-primario:disabled,
+.al-btn-peligro:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.al-btn-primario .spinner,
+.al-btn-peligro .spinner {
+  width: 14px;
+  height: 14px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+
+/* Tarjeta de una alerta */
+.al-card {
+  display: grid;
+  gap: 0.9rem 1.25rem;
+  align-items: center;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #1e293b;
+  padding: 1rem 1.1rem;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+@media (min-width: 768px) {
+  .al-card {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.4fr) auto;
+  }
+}
+
+.al-card[data-estado="pausada"],
+.al-card[data-estado="disparada"] {
+  background: #172033;
+}
+
+.al-card.saliendo {
+  opacity: 0;
+  transform: translateX(12px);
+}
+
+/* Etiqueta de la regla: verde sube, rojo baja, violeta variación */
+.al-regla {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.al-regla[data-tipo="ABOVE"] {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.al-regla[data-tipo="BELOW"] {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.al-regla[data-tipo="PCT_CHANGE"] {
+  background: rgba(167, 139, 250, 0.16);
+  color: #c4b5fd;
+}
+
+/* Estado de la alerta */
+.al-estado {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  font-size: 0.8125rem;
+  color: #94a3b8;
+}
+
+.al-estado svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+}
+
+.al-estado[data-estado="activa"] {
+  color: #6ee7b7;
+}
+
+.al-estado[data-estado="disparada"] {
+  color: #fcd34d;
+}
+
+/* Interruptor activar / pausar */
+.al-switch {
+  position: relative;
+  display: inline-flex;
+  width: 2.5rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: #475569;
+  transition: background-color 0.15s ease;
+}
+
+.al-switch::after {
+  content: "";
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 9999px;
+  background: #ffffff;
+  transition: transform 0.15s ease;
+}
+
+.al-switch[aria-checked="true"] {
+  background: #10b981;
+}
+
+.al-switch[aria-checked="true"]::after {
+  transform: translateX(1.1rem);
+}
+
+/* Botones de ícono de cada tarjeta */
+.al-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  color: #94a3b8;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.al-icono:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
+.al-icono[data-accion="eliminar"]:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.al-icono svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+/* Ventanas modales */
+.al-modal {
+  width: calc(100% - 2rem);
+  max-width: 30rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  background: #0f172a;
+  padding: 1.5rem;
+  color: #e2e8f0;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+}
+
+.al-modal-chico {
+  max-width: 26rem;
+}
+
+.al-modal::backdrop {
+  background: rgba(2, 6, 14, 0.72);
+}
+
+.al-modal[open] {
+  animation: entrar-paso 0.18s ease-out;
+}
+
+/* Opciones de condición dentro del formulario */
+.al-opcion {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.al-opcion input {
+  margin-top: 0.2rem;
+  accent-color: #6366f1;
+}
+
+.al-opcion:has(input:checked) {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.al-opcion:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Unidad pegada a la izquierda del valor ($, US$ o %) */
+.al-unidad {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3rem;
+  padding: 0 0.75rem;
+  border: 1px solid #334155;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  background: #1e293b;
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Burbuja que imita un mensaje de Telegram */
+.al-burbuja {
+  max-width: 100%;
+  border-radius: 12px 12px 12px 4px;
+  background: #182533;
+  padding: 0.7rem 0.85rem;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.al-burbuja strong {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .al-card,
+  .al-modal[open] {
+    transition: none;
+    animation: none;
+  }
+}

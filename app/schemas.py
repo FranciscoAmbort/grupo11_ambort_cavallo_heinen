@@ -26,6 +26,8 @@ class TelegramUpdateRequest(BaseModel):
 
 
 ALERT_TYPES = ("ABOVE", "BELOW", "PCT_CHANGE")
+# La columna threshold_value es Numeric(12, 4): admite hasta 8 cifras enteras
+MAX_THRESHOLD_VALUE = 100_000_000
 ASSET_TYPES = ("stock", "cedear", "bond")
 
 
@@ -74,6 +76,40 @@ class AlertCreateRequest(BaseModel):
                 raise ValueError("target_price es obligatorio y debe ser mayor a 0 para alertas ABOVE/BELOW")
         elif self.threshold_percent is None or self.threshold_percent <= 0:
             raise ValueError("threshold_percent es obligatorio y debe ser mayor a 0 para alertas PCT_CHANGE")
+        value = self.threshold_percent if self.alert_type == "PCT_CHANGE" else self.target_price
+        if value >= MAX_THRESHOLD_VALUE:
+            raise ValueError(f"El valor debe ser menor a {MAX_THRESHOLD_VALUE:,.0f}")
+        return self
+
+
+class AlertUpdateRequest(BaseModel):
+    """Campos opcionales para modificar una alerta: pausar/reactivar o cambiar su condición."""
+
+    is_active: bool | None = None
+    alert_type: str | None = None
+    target_price: float | None = None
+    threshold_percent: float | None = None
+
+    @field_validator("alert_type")
+    @classmethod
+    def _normalize_alert_type(cls, value: str | None) -> str | None:
+        """Normaliza a mayúsculas y rechaza tipos desconocidos."""
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in ALERT_TYPES:
+            raise ValueError(f"alert_type debe ser uno de: {', '.join(ALERT_TYPES)}")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_values(self) -> "AlertUpdateRequest":
+        """Exige al menos un campo y que los valores numéricos estén dentro del rango permitido."""
+        if all(v is None for v in (self.is_active, self.alert_type, self.target_price, self.threshold_percent)):
+            raise ValueError("No se indicó ningún cambio")
+        for name in ("target_price", "threshold_percent"):
+            value = getattr(self, name)
+            if value is not None and not 0 < value < MAX_THRESHOLD_VALUE:
+                raise ValueError(f"{name} debe ser mayor a 0 y menor a {MAX_THRESHOLD_VALUE:,.0f}")
         return self
 
 
