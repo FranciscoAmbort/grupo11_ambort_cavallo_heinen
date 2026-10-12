@@ -183,21 +183,11 @@ async def check_market_and_evaluate_alerts() -> None:
                 ref_price: Decimal | None = alert.last_notified_price
 
                 if ref_price is None:
-                    # Si no tiene last_notified_price, buscar el precio anterior más reciente en price_history
-                    stmt_prev_price = (
-                        select(PriceHistory.price)
-                        .where(PriceHistory.asset_id == asset.id, PriceHistory.timestamp < now_utc)
-                        .order_by(PriceHistory.timestamp.desc())
-                        .limit(1)
-                    )
-                    res_prev = await session.execute(stmt_prev_price)
-                    prev_p = res_prev.scalar_one_or_none()
-                    if prev_p is not None:
-                        ref_price = prev_p
-                    else:
-                        # Si es el primer precio que se registra, fijarlo como referencia inicial
-                        alert.last_notified_price = current_price
-                        continue
+                    # Alerta nueva: su referencia queda fija en la primera lectura posterior a su
+                    # creación. Las variaciones se miden contra ese precio (no contra la lectura
+                    # del minuto anterior) hasta que la alerta avise y se re-ancle.
+                    alert.last_notified_price = current_price
+                    continue
 
                 if ref_price > 0:
                     diff = current_price - ref_price
