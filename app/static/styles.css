@@ -1,0 +1,62 @@
+/* Estilos propios de MonitorPrecios que Tailwind no cubre. */
+
+/* Foco visible para quien navega con teclado */
+:focus-visible {
+  outline: 2px solid #34d399;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Spinner del estado "Autenticando..." */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #334155;
+  border-top-color: #34d399;
+  border-radius: 50%;
+  animation: girar 0.7s linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Logo: al cargar, la cotización se dibuja y el punto de cruce aparece al final */
+.logo-linea {
+  stroke-dasharray: 70;
+  stroke-dashoffset: 70;
+  animation: dibujar 0.9s ease-out 0.15s forwards;
+}
+
+.logo-cruce {
+  opacity: 0;
+  animation: aparecer 0.25s ease-out 0.85s forwards;
+}
+
+@keyframes dibujar {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes aparecer {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Sin animaciones para quien las desactivó en su sistema */
+@media (prefers-reduced-motion: reduce) {
+  .logo-linea,
+  .logo-cruce {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+
+  .spinner {
+    animation-duration: 2s;
+  }
+}

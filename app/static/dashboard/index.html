@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MonitorPrecios — Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="flex min-h-screen items-center justify-center bg-[#0f172a] px-4 text-slate-200">
+    <!-- Página provisoria: confirma que la sesión funciona hasta que se implemente la pantalla real -->
+    <main class="w-full max-w-sm rounded-2xl border border-[#24304a] bg-[#131d33] px-8 py-10 text-center">
+      <h1 class="text-xl font-semibold text-white">Dashboard</h1>
+      <p id="estado" class="mt-3 text-sm text-slate-400">Verificando sesión...</p>
+      <button id="salir" class="mt-6 hidden rounded-lg border border-[#24304a] px-4 py-2 text-sm text-slate-200 hover:bg-white/5">
+        Cerrar sesión
+      </button>
+    </main>
+    <script>
+      /** Muestra quién inició sesión, o vuelve al login si no hay sesión. */
+      async function mostrarSesion() {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        if (!res.ok) {
+          window.location.href = "/";
+          return;
+        }
+        const user = await res.json();
+        document.getElementById("estado").textContent =
+          "Sesión iniciada como " + user.email + ". Esta pantalla todavía no está implementada.";
+        document.getElementById("salir").classList.remove("hidden");
+      }
+
+      /** Cierra la sesión y vuelve al login. */
+      async function cerrarSesion() {
+        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+        window.location.href = "/";
+      }
+
+      document.getElementById("salir").addEventListener("click", cerrarSesion);
+      mostrarSesion();
+    </script>
+  </body>
+</html>

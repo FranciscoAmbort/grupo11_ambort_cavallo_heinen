@@ -3,11 +3,98 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Monitor de Precios y Alertas</title>
+    <title>MonitorPrecios — Iniciar sesión</title>
+    <meta name="description" content="Monitoreo de cotizaciones (ARS / USD) y alertas en tiempo real vía Telegram." />
+
+    <!-- Tipografías: Sora para la marca, IBM Plex Sans para el texto -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=Sora:wght@600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Tailwind CSS (CDN) con los colores y tipografías de la app -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              fondo: "#0f172a",
+              tarjeta: "#131d33",
+              borde: "#24304a",
+              acento: "#34d399",
+            },
+            fontFamily: {
+              marca: ["Sora", "system-ui", "sans-serif"],
+              sans: ["IBM Plex Sans", "system-ui", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+
+    <!-- Google Identity Services: dibuja el botón oficial y entrega el id_token -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
-  <body>
-    <!-- Página provisoria: se reemplaza cuando se implemente el frontend -->
-    <h1>Monitor de Precios y Alertas</h1>
-    <p>El frontend todavía no está implementado. La API está documentada en <a href="/docs">/docs</a>.</p>
+
+  <body class="min-h-screen bg-fondo font-sans text-slate-200 antialiased">
+    <main class="flex min-h-screen items-center justify-center px-4 py-10">
+      <section
+        aria-labelledby="titulo-app"
+        class="w-full max-w-sm rounded-2xl border border-borde bg-tarjeta px-5 py-10 text-center sm:px-8 shadow-2xl shadow-black/40"
+      >
+        <!-- Logo: una cotización que cruza el umbral de una alerta -->
+        <svg class="logo mx-auto h-16 w-16" viewBox="0 0 64 64" fill="none" role="img" aria-label="Logo de MonitorPrecios">
+          <rect x="1" y="1" width="62" height="62" rx="16" fill="#0f172a" stroke="#24304a" stroke-width="2" />
+          <!-- Umbral de la alerta -->
+          <line x1="10" y1="26" x2="54" y2="26" stroke="#64748b" stroke-width="2" stroke-dasharray="3 4" stroke-linecap="round" />
+          <!-- Cotización -->
+          <polyline
+            class="logo-linea"
+            points="10,46 20,40 27,43 36,31 42,26 54,15"
+            stroke="#34d399"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <!-- Punto donde el precio cruza el umbral: ahí se dispara la alerta -->
+          <circle class="logo-cruce" cx="42" cy="26" r="4.5" fill="#0f172a" stroke="#34d399" stroke-width="3" />
+        </svg>
+
+        <h1 id="titulo-app" class="mt-6 font-marca text-2xl font-semibold sm:text-3xl tracking-tight text-white">MonitorPrecios</h1>
+        <p class="mx-auto mt-3 max-w-[17rem] text-sm leading-relaxed text-slate-400">
+          Monitoreo de cotizaciones (ARS / USD) y alertas en tiempo real vía Telegram
+        </p>
+
+        <!-- Banner de error: se muestra sin recargar la página -->
+        <div
+          id="auth-error"
+          role="alert"
+          class="mt-6 hidden rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-left text-sm text-rose-200"
+        >
+          <span id="auth-error-text"></span>
+        </div>
+
+        <div id="auth-actions" class="mt-8 flex min-h-[44px] flex-col items-center justify-center">
+          <!-- Botón oficial de Google (lo dibuja login.js) -->
+          <div id="google-signin-btn"></div>
+
+          <!-- Estado de carga mientras el backend valida el token -->
+          <div id="auth-loading" class="hidden items-center gap-3 text-sm text-slate-300" aria-live="polite">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Autenticando...</span>
+          </div>
+        </div>
+
+        <p class="mt-8 text-xs leading-relaxed text-slate-500">
+          Usamos tu cuenta de Google solo para identificarte. No guardamos contraseñas.
+        </p>
+      </section>
+    </main>
+
+    <script src="/login.js"></script>
   </body>
 </html>
