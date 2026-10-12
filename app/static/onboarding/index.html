@@ -3,41 +3,211 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MonitorPrecios — Onboarding</title>
+    <title>MonitorPrecios — Configuración inicial</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@600&display=swap"
+      rel="stylesheet"
+    />
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="flex min-h-screen items-center justify-center bg-[#0f172a] px-4 text-slate-200">
-    <!-- Página provisoria: confirma que la sesión funciona hasta que se implemente la pantalla real -->
-    <main class="w-full max-w-sm rounded-2xl border border-[#24304a] bg-[#131d33] px-8 py-10 text-center">
-      <h1 class="text-xl font-semibold text-white">Onboarding</h1>
-      <p id="estado" class="mt-3 text-sm text-slate-400">Verificando sesión...</p>
-      <button id="salir" class="mt-6 hidden rounded-lg border border-[#24304a] px-4 py-2 text-sm text-slate-200 hover:bg-white/5">
-        Cerrar sesión
-      </button>
+
+  <body class="min-h-screen bg-fondo font-sans text-slate-200 antialiased">
+    <main class="flex min-h-screen items-start justify-center px-4 py-8 sm:items-center">
+      <div class="w-full max-w-2xl rounded-2xl border border-borde bg-tarjeta shadow-2xl shadow-black/40">
+        <!-- Encabezado con la marca y el indicador de progreso -->
+        <header class="border-b border-borde px-5 py-6 sm:px-8">
+          <p class="font-marca text-lg font-semibold tracking-tight text-white">MonitorPrecios</p>
+
+          <ol id="stepper" class="mt-5 flex items-center" aria-label="Progreso de la configuración">
+            <li class="paso flex items-center gap-2" data-paso="1">
+              <span class="paso-num">1</span>
+              <span class="paso-texto">Telegram</span>
+            </li>
+            <li class="paso-linea" aria-hidden="true"></li>
+            <li class="paso flex items-center gap-2" data-paso="2">
+              <span class="paso-num">2</span>
+              <span class="paso-texto">Activos</span>
+            </li>
+            <li class="paso-linea" aria-hidden="true"></li>
+            <li class="paso flex items-center gap-2" data-paso="3">
+              <span class="paso-num">3</span>
+              <span class="paso-texto">Primera alerta</span>
+            </li>
+          </ol>
+        </header>
+
+        <!-- Estado inicial mientras se verifica la sesión y se cargan los datos -->
+        <div id="cargando" class="flex items-center justify-center gap-3 px-8 py-16 text-sm text-slate-300">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Cargando...</span>
+        </div>
+
+        <!-- ───────────── Paso 1: Telegram ───────────── -->
+        <section data-step="1" class="paso-panel hidden px-5 py-7 sm:px-8" aria-labelledby="titulo-paso-1">
+          <h1 id="titulo-paso-1" class="text-xl font-semibold text-white">Vinculá tu Telegram</h1>
+          <p class="mt-2 max-w-prose text-sm leading-relaxed text-slate-400">
+            Para recibir avisos inmediatos en tu celular cuando un precio toque tu objetivo, vinculá tu cuenta de
+            Telegram.
+          </p>
+
+          <ol class="mt-6 space-y-5 text-sm text-slate-300">
+            <li class="flex gap-3">
+              <span class="guia-num">1</span>
+              <div>
+                <p>Abrí el bot y tocá <strong class="font-medium text-white">Iniciar</strong>. Sin ese paso, Telegram no nos deja escribirte.</p>
+                <a
+                  id="link-bot"
+                  href="#"
+                  target="_blank"
+                  rel="noopener"
+                  class="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 font-medium text-slate-900 hover:bg-emerald-400"
+                >
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                  </svg>
+                  Abrir el bot en Telegram
+                </a>
+              </div>
+            </li>
+            <li class="flex gap-3">
+              <span class="guia-num">2</span>
+              <p>
+                Conseguí tu Chat ID: en Telegram, escribile a <span class="text-white">@userinfobot</span> y copiá el número
+                que aparece como <span class="text-white">Id</span>.
+              </p>
+            </li>
+            <li class="flex gap-3">
+              <span class="guia-num">3</span>
+              <div class="min-w-0 flex-1">
+                <label for="telegram-chat-id" class="block">Pegá tu Chat ID acá</label>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <input
+                    id="telegram-chat-id"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    placeholder="Ej.: 123456789"
+                    class="campo min-w-0 flex-1"
+                  />
+                  <button id="btn-guardar-telegram" type="button" class="btn-secundario">Guardar</button>
+                </div>
+                <p id="telegram-estado" class="mt-2 hidden items-center gap-2 text-sm" aria-live="polite"></p>
+              </div>
+            </li>
+          </ol>
+
+          <p class="mt-6 text-xs text-slate-500">
+            Podés dejarlo vacío y vincularlo más adelante. Mientras tanto, las alertas te llegan por correo.
+          </p>
+
+          <footer class="mt-7 flex justify-end">
+            <button id="btn-continuar-1" type="button" class="btn-primario">Continuar</button>
+          </footer>
+        </section>
+
+        <!-- ───────────── Paso 2: Activos ───────────── -->
+        <section data-step="2" class="paso-panel hidden px-5 py-7 sm:px-8" aria-labelledby="titulo-paso-2">
+          <h1 id="titulo-paso-2" class="text-xl font-semibold text-white">Elegí los activos que querés seguir de cerca</h1>
+          <p class="mt-2 text-sm text-slate-400">Después podés agregar o quitar activos cuando quieras.</p>
+
+          <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label for="buscador" class="sr-only">Buscar por ticker o nombre</label>
+            <input id="buscador" type="search" placeholder="Buscar por ticker o nombre" class="campo sm:flex-1" />
+            <button id="btn-recomendados" type="button" class="btn-secundario whitespace-nowrap">Seleccionar recomendados</button>
+          </div>
+
+          <div id="filtros" class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtrar por tipo">
+            <button type="button" class="pildora" data-filtro="todos" aria-pressed="true">Todos</button>
+            <button type="button" class="pildora" data-filtro="ARS" aria-pressed="false">Acciones y CEDEARs (ARS)</button>
+            <button type="button" class="pildora" data-filtro="USD" aria-pressed="false">Bonos soberanos (USD)</button>
+          </div>
+
+          <div id="grilla-activos" class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+          <p id="sin-resultados" class="mt-5 hidden text-sm text-slate-400">No hay activos que coincidan con la búsqueda.</p>
+
+          <footer class="mt-7 flex flex-wrap items-center justify-between gap-3">
+            <p id="contador" class="text-sm text-slate-300" aria-live="polite">Ningún activo seleccionado</p>
+            <div class="flex gap-2">
+              <button type="button" class="btn-secundario" data-ir-a="1">Atrás</button>
+              <button id="btn-continuar-2" type="button" class="btn-primario">Continuar</button>
+            </div>
+          </footer>
+        </section>
+
+        <!-- ───────────── Paso 3: Primera alerta ───────────── -->
+        <section data-step="3" class="paso-panel hidden px-5 py-7 sm:px-8" aria-labelledby="titulo-paso-3">
+          <h1 id="titulo-paso-3" class="text-xl font-semibold text-white">Creá tu primera alerta</h1>
+          <p class="mt-2 text-sm text-slate-400">Es opcional: podés omitirla y configurar tus alertas después.</p>
+
+          <!-- Se muestra si en el paso 2 no se eligió ningún activo -->
+          <p id="alerta-sin-activos" class="mt-6 hidden rounded-lg border border-borde bg-fondo/60 px-4 py-3 text-sm text-slate-300">
+            No elegiste ningún activo, así que todavía no hay sobre qué crear una alerta. Podés volver al paso anterior o
+            finalizar y hacerlo más tarde.
+          </p>
+
+          <form id="form-alerta" class="mt-6 space-y-5" novalidate>
+            <div>
+              <label for="alerta-activo" class="etiqueta">Activo</label>
+              <select id="alerta-activo" class="campo mt-2 w-full"></select>
+              <p id="alerta-precio" class="mt-2 text-xs text-slate-500"></p>
+            </div>
+
+            <fieldset>
+              <legend class="etiqueta">Avisarme cuando</legend>
+              <div class="mt-2 grid gap-2 sm:grid-cols-3">
+                <label class="opcion">
+                  <input type="radio" name="alerta-tipo" value="ABOVE" checked />
+                  <span>Sube por encima de</span>
+                </label>
+                <label class="opcion">
+                  <input type="radio" name="alerta-tipo" value="BELOW" />
+                  <span>Cae por debajo de</span>
+                </label>
+                <label class="opcion">
+                  <input type="radio" name="alerta-tipo" value="PCT_CHANGE" />
+                  <span>Varía un porcentaje</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div>
+              <label for="alerta-valor" id="alerta-valor-etiqueta" class="etiqueta">Precio objetivo</label>
+              <div class="mt-2 flex items-stretch">
+                <input
+                  id="alerta-valor"
+                  type="number"
+                  inputmode="decimal"
+                  min="0"
+                  step="any"
+                  placeholder="0,00"
+                  class="campo min-w-0 flex-1 rounded-r-none"
+                />
+                <span id="alerta-unidad" class="unidad">ARS $</span>
+              </div>
+              <p id="alerta-error" class="mt-2 hidden text-sm text-rose-300" role="alert"></p>
+            </div>
+          </form>
+
+          <footer class="mt-7 flex flex-wrap items-center justify-between gap-3">
+            <button type="button" class="btn-secundario" data-ir-a="2">Atrás</button>
+            <div class="flex flex-wrap gap-2">
+              <button id="btn-omitir" type="button" class="btn-secundario">Omitir y configurar después</button>
+              <button id="btn-finalizar" type="button" class="btn-primario">Finalizar configuración</button>
+            </div>
+          </footer>
+        </section>
+      </div>
     </main>
-    <script>
-      /** Muestra quién inició sesión, o vuelve al login si no hay sesión. */
-      async function mostrarSesion() {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
-        if (!res.ok) {
-          window.location.href = "/";
-          return;
-        }
-        const user = await res.json();
-        document.getElementById("estado").textContent =
-          "Sesión iniciada como " + user.email + ". Esta pantalla todavía no está implementada.";
-        document.getElementById("salir").classList.remove("hidden");
-      }
 
-      /** Cierra la sesión y vuelve al login. */
-      async function cerrarSesion() {
-        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-        window.location.href = "/";
-      }
+    <!-- Avisos de error o confirmación (los crea onboarding.js) -->
+    <div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4" aria-live="assertive"></div>
 
-      document.getElementById("salir").addEventListener("click", cerrarSesion);
-      mostrarSesion();
-    </script>
+    <script src="/onboarding/onboarding.js"></script>
   </body>
 </html>
