@@ -3,6 +3,10 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
+class PublicConfigOut(BaseModel):
+    google_client_id: str
+
+
 class GoogleAuthRequest(BaseModel):
     id_token: str
 

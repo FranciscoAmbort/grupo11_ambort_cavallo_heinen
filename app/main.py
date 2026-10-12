@@ -12,6 +12,7 @@ from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.config import settings
 from app.database import engine, get_session
+from app.schemas import PublicConfigOut
 from app.worker.checker import run_checker_loop
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,12 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(assets_router, prefix="/api/assets", tags=["assets"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])
+
+
+@app.get("/api/config", response_model=PublicConfigOut, tags=["config"])
+async def public_config() -> PublicConfigOut:
+    """Devuelve la configuración pública que necesita el navegador antes del login (sin secretos)."""
+    return PublicConfigOut(google_client_id=settings.google_client_id)
 
 
 @app.get("/api/health", tags=["health"])
