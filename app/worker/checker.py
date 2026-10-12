@@ -26,9 +26,24 @@ from app.config import settings
 from app.database import async_session_maker
 from app.models import Asset, Alert, User, UserAsset, PriceHistory
 from app.services.market import get_multiple_prices
+from app.services.email import send_email_alert
 from app.services.telegram import send_telegram_alert
 
 logger = logging.getLogger(__name__)
+
+
+async def _notify_user(user: User, asset: Asset, alert_id: int, message: str) -> bool:
+    """Avisa al usuario por Telegram y, si no lo tiene vinculado o el envío falla, por correo."""
+    if user.telegram_chat_id:
+        if await send_telegram_alert(user.telegram_chat_id, message, parse_mode="HTML"):
+            return True
+        logger.warning("Alerta %d: falló Telegram para %s; se intenta por correo.", alert_id, user.email)
+
+    if await send_email_alert(user.email, f"Alerta de precio: {asset.ticker}", message):
+        return True
+
+    logger.warning("Alerta %d disparada pero no se pudo avisar a %s por ningún canal.", alert_id, user.email)
+    return False
 
 
 async def check_market_and_evaluate_alerts() -> None:
@@ -167,14 +182,7 @@ async def check_market_and_evaluate_alerts() -> None:
                 alert.last_triggered_at = now_utc
                 alert.is_active = False  # Comportamiento One-Shot
 
-                if user.telegram_chat_id:
-                    await send_telegram_alert(user.telegram_chat_id, message, parse_mode="HTML")
-                else:
-                    logger.warning(
-                        "Alerta %d disparada pero el usuario %s no tiene telegram_chat_id.",
-                        alert.id,
-                        user.email,
-                    )
+                await _notify_user(user, asset, alert.id, message)
                 continue
 
             # ── 2. Alertas de Variación Porcentual - Re-anclaje Continuo ───────
@@ -209,14 +217,7 @@ async def check_market_and_evaluate_alerts() -> None:
                         alert.last_notified_price = current_price
                         # is_active permanece True
 
-                        if user.telegram_chat_id:
-                            await send_telegram_alert(user.telegram_chat_id, message, parse_mode="HTML")
-                        else:
-                            logger.warning(
-                                "Alerta %d disparada pero usuario %s sin telegram_chat_id.",
-                                alert.id,
-                                user.email,
-                            )
+                        await _notify_user(user, asset, alert.id, message)
 
         await session.commit()
         logger.info("Fase 3: Persistencia y evaluación completadas exitosamente.")

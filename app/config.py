@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # el servicio telegram.py verifica que no esté vacío antes de enviar.
     telegram_bot_token: str = ""
 
+    # Correo de respaldo (API de Brevo) para usuarios sin Telegram o cuando Telegram falla.
+    # Vacíos por defecto: si faltan, simplemente no se envían correos.
+    brevo_api_key: str = ""
+    # Dirección remitente; tiene que estar verificada en la cuenta de Brevo.
+    email_from: str = ""
+
     # Intervalo de chequeo del background worker en segundos
     worker_interval_seconds: int = 60
 
