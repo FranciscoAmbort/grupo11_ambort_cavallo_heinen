@@ -1,8 +1,10 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,8 @@ from app.schemas import PublicConfigOut
 from app.worker.checker import run_checker_loop
 
 logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -66,3 +70,8 @@ async def health(session: AsyncSession = Depends(get_session)) -> dict[str, bool
             detail={"status": "error", "database": False},
         ) from exc
     return {"status": "ok", "database": True}
+
+
+# Frontend: se monta al final para que /api y /docs tengan prioridad sobre los archivos estáticos.
+# html=True hace que "/" devuelva index.html.
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
