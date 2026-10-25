@@ -141,6 +141,12 @@ function formatDateTime(date) {
   return `${day} ${formatTime(date)} hs`;
 }
 
+/** Formatea una fecha como "dd/mm HH:mm" en hora local, para el eje X del gráfico. */
+function formatShortDateTime(date) {
+  const day = date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+  return `${day} ${formatTime(date)}`;
+}
+
 /** Devuelve el nombre legible de una categoría ("Acción", "Bono", "CEDEAR"). */
 function categoryLabel(assetType) {
   return CATEGORY_LABELS[assetType] ?? assetType;
@@ -474,7 +480,7 @@ function renderDetail({ pending = false } = {}) {
 /** Crea el gráfico la primera vez y después solo actualiza sus datos y colores. */
 function renderChart(asset, history, trend) {
   const color = TREND_COLORS[trend];
-  const labels = history.map((point) => formatTime(point.date));
+  const labels = history.map((point) => formatShortDateTime(point.date));
   const prices = history.map((point) => point.price);
 
   /** Relleno degradado bajo la curva, del color de la tendencia a transparente. */

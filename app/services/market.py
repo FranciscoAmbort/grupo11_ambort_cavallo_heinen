@@ -12,6 +12,8 @@ Reglas de arquitectura aplicadas (ver AGENTS.md §5.2):
 
 Funciones públicas:
   get_ticker_price(ticker)        → float | None
+  fetch_bonds_data()              → dict | None   (respuesta completa de /api/bonos)
+  is_market_open(bonds_data)      → bool | None   (según rueda.abierta)
   get_multiple_prices(tickers)    → dict[str, float]
 """
 
@@ -145,12 +147,62 @@ async def get_ticker_price(
 _BONDS_API_URL = "https://compararfondos.com.ar/api/bonos"
 
 
-async def fetch_bonds_prices(tickers: list[str]) -> dict[str, float]:
+async def fetch_bonds_data() -> dict | None:
+    """
+    Hace la petición a la API de bonos de CompararFondos y devuelve su respuesta completa.
+
+    De esa misma respuesta salen los precios de los bonos y el estado del mercado
+    (objeto "rueda"), así el worker consulta la API una sola vez por ciclo.
+    Retorna None si la API no responde, da error o no devuelve un objeto JSON.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.get(_BONDS_API_URL, headers={"User-Agent": "Mozilla/5.0"})
+            response.raise_for_status()
+            data = response.json()
+    except httpx.TimeoutException:
+        logger.warning("Timeout al consultar la API de bonos compararfondos.com.ar.")
+        return None
+    except httpx.HTTPStatusError as exc:
+        logger.warning("Error HTTP %s al consultar bonos: %s", exc.response.status_code, exc.response.text[:200])
+        return None
+    except httpx.RequestError as exc:
+        logger.warning("Error de red al consultar la API de bonos: %s", exc)
+        return None
+    except Exception as exc:
+        logger.warning("Error inesperado procesando respuesta de bonos: %s", exc)
+        return None
+
+    if not isinstance(data, dict):
+        logger.warning("Formato inesperado en respuesta de bonos (no es un objeto JSON).")
+        return None
+    return data
+
+
+def is_market_open(bonds_data: dict | None) -> bool | None:
+    """
+    Dice si el mercado está abierto según el campo rueda.abierta de la API de bonos.
+
+    Retorna True o False, o None si no se puede saber (sin respuesta, sin objeto
+    "rueda" o sin un valor booleano en "abierta").
+    """
+    if not isinstance(bonds_data, dict):
+        return None
+    rueda = bonds_data.get("rueda")
+    if not isinstance(rueda, dict):
+        return None
+    abierta = rueda.get("abierta")
+    return abierta if isinstance(abierta, bool) else None
+
+
+async def fetch_bonds_prices(tickers: list[str], *, bonds_data: dict | None = None) -> dict[str, float]:
     """
     Consulta cotizaciones consolidadas de bonos soberanos en la API de CompararFondos.
 
     Parámetros:
-      tickers – Lista de tickers solicitados (ej: ["AL30", "GD30", "AE38"]).
+      tickers    – Lista de tickers solicitados (ej: ["AL30", "GD30", "AE38"]).
+      bonds_data – Respuesta de la API ya descargada (opcional). Si se pasa, se
+                   reutiliza en vez de volver a consultar la API.
 
     Retorna:
       Diccionario {ticker: precio} con los bonos encontrados y precio numérico válido.
@@ -162,22 +214,8 @@ async def fetch_bonds_prices(tickers: list[str]) -> dict[str, float]:
     req_map = {t: t.replace(".BA", "").strip().upper() for t in tickers}
     normalized_needed = set(req_map.values())
 
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            response = await client.get(_BONDS_API_URL, headers={"User-Agent": "Mozilla/5.0"})
-            response.raise_for_status()
-            data = response.json()
-    except httpx.TimeoutException:
-        logger.warning("Timeout al consultar la API de bonos compararfondos.com.ar.")
-        return {}
-    except httpx.HTTPStatusError as exc:
-        logger.warning("Error HTTP %s al consultar bonos: %s", exc.response.status_code, exc.response.text[:200])
-        return {}
-    except httpx.RequestError as exc:
-        logger.warning("Error de red al consultar la API de bonos: %s", exc)
-        return {}
-    except Exception as exc:
-        logger.warning("Error inesperado procesando respuesta de bonos: %s", exc)
+    data = bonds_data if bonds_data is not None else await fetch_bonds_data()
+    if data is None:
         return {}
 
     bonds_list = data.get("bonds", [])
@@ -222,6 +260,8 @@ async def fetch_bonds_prices(tickers: list[str]) -> dict[str, float]:
 
 async def get_multiple_prices(
     tickers: dict[str, str] | typing.Iterable[tuple[str, str] | typing.Sequence[str]],
+    *,
+    bonds_data: dict | None = None,
 ) -> dict[str, float]:
     """
     Consulta los precios de múltiples activos en paralelo utilizando Multi-Provider Strategy:
@@ -229,8 +269,10 @@ async def get_multiple_prices(
       - Activos stock / cedear -> Yahoo Finance API
 
     Parámetros:
-      tickers – Mapeo {ticker: asset_type} o iterable de pares (ticker, asset_type)
-                (soporta tuplas, listas, objetos Row de SQLAlchemy o cualquier secuencia de 2 elementos).
+      tickers    – Mapeo {ticker: asset_type} o iterable de pares (ticker, asset_type)
+                   (soporta tuplas, listas, objetos Row de SQLAlchemy o cualquier secuencia de 2 elementos).
+      bonds_data – Respuesta de la API de bonos ya descargada (opcional), para no
+                   consultarla dos veces en el mismo ciclo.
 
     Retorna:
       Diccionario {ticker: precio} con solo los tickers que devolvieron un precio válido.
@@ -303,7 +345,7 @@ async def get_multiple_prices(
 
     # Despachar ambas llamadas en paralelo con asyncio.gather
     yahoo_future = _fetch_yahoo()
-    bonds_future = fetch_bonds_prices(bonds_tickers)
+    bonds_future = fetch_bonds_prices(bonds_tickers, bonds_data=bonds_data)
 
     yahoo_res, bonds_res = await asyncio.gather(yahoo_future, bonds_future)
 

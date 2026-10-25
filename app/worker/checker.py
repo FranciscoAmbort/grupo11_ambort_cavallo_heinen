@@ -4,6 +4,10 @@ app/worker/checker.py
 Worker en segundo plano para el monitoreo periódico de cotizaciones,
 persistencia de datos históricos y evaluación de alertas de usuarios.
 
+Antes de las fases se consulta el estado del mercado (rueda.abierta de la API de
+bonos de CompararFondos). Con el mercado cerrado, o si no se puede saber, se
+saltea el ciclo entero: no se consultan precios, no se guardan ni se evalúan alertas.
+
 Flujo en 3 Fases (AGENTS.md §5.1):
   - Fase 1 (Deduplicación): Obtiene los tickers únicos activos en carteras o alertas activas.
   - Fase 2 (Ingesta Concurrente): Consulta precios una sola vez por ticker usando
@@ -25,11 +29,27 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import async_session_maker
 from app.models import Asset, Alert, User, UserAsset, PriceHistory
-from app.services.market import get_multiple_prices
+from app.services.market import fetch_bonds_data, get_multiple_prices, is_market_open
 from app.services.email import send_email_alert
 from app.services.telegram import send_telegram_alert
 
 logger = logging.getLogger(__name__)
+
+# Último estado del mercado visto por el worker (None hasta el primer ciclo).
+# Sirve para loguear solo los cambios de abierto a cerrado y viceversa.
+_last_market_open: bool | None = None
+
+
+def _log_market_state(is_open: bool) -> None:
+    """Registra en el log el estado del mercado solo cuando cambia respecto del ciclo anterior."""
+    global _last_market_open
+    if is_open == _last_market_open:
+        return
+    if is_open:
+        logger.info("Mercado abierto: el worker reanuda la consulta de precios y la evaluación de alertas.")
+    else:
+        logger.info("Mercado cerrado: el worker saltea los ciclos hasta que vuelva a abrir.")
+    _last_market_open = is_open
 
 
 async def _notify_user(user: User, asset: Asset, alert_id: int, message: str) -> bool:
@@ -50,7 +70,25 @@ async def check_market_and_evaluate_alerts() -> None:
     """
     Ejecuta un ciclo completo de chequeo de mercado y evaluación de alertas.
     Maneja su propia AsyncSession con context manager para no retener conexiones abiertas.
+    Si el mercado está cerrado (o no se puede saber) no hace nada en este ciclo.
     """
+    # ─────────────────────────────────────────────────────────────────────
+    # ESTADO DEL MERCADO: una sola petición a /api/bonos por ciclo, que se
+    # reutiliza después para los precios de los bonos en la Fase 2.
+    # ─────────────────────────────────────────────────────────────────────
+    bonds_data = await fetch_bonds_data()
+    market_open = is_market_open(bonds_data)
+    if market_open is None:
+        logger.warning(
+            "No se pudo obtener el estado del mercado (rueda.abierta) desde CompararFondos; "
+            "se trata como mercado cerrado y se saltea el ciclo."
+        )
+        market_open = False
+
+    _log_market_state(market_open)
+    if not market_open:
+        return
+
     async with async_session_maker() as session:
         # ─────────────────────────────────────────────────────────────────────
         # FASE 1: Deduplicación de tickers a consultar (ticker y asset_type)
@@ -86,7 +124,7 @@ async def check_market_and_evaluate_alerts() -> None:
         # ─────────────────────────────────────────────────────────────────────
         # FASE 2: Ingesta concurrente de cotizaciones (Multi-Proveedor)
         # ─────────────────────────────────────────────────────────────────────
-        prices_map: dict[str, float] = await get_multiple_prices(assets_map)
+        prices_map: dict[str, float] = await get_multiple_prices(assets_map, bonds_data=bonds_data)
         if not prices_map:
             logger.warning("Fase 2: No se obtuvieron cotizaciones en este ciclo.")
             return
