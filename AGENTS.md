@@ -268,3 +268,25 @@ Estas reglas son de cumplimiento estricto. Cualquier implementación generada po
 \#\# 6.3 Variables de entorno  
 \- \`GEMINI\_API\_KEY\`: opcional (vacía por defecto). Sin ella la app funciona y el resumen muestra solo estadísticas.  
 \- \`GEMINI\_MODEL\`: opcional (por defecto \`gemini-3.5-flash-lite\`). Usar un nombre de modelo fijo, no un alias \`-latest\`.  
+
+\---
+
+\# 7\. Alertas y Gráficos sobre Valores Intermedios (Velas Intradiarias)
+
+\#\# 7.1 Esquema y Persistencia (migración 0005)  
+\- \*\*Restricción única en \`price\_history\`:\*\* La migración \`0005\_price\_history\_unique\` deduplica lecturas previas (conservando el menor \`id\`), reemplaza el índice simple y crea el constraint único \`uq\_price\_history\_asset\_timestamp\` sobre \`(asset\_id, timestamp)\`.  
+\- \*\*Upsert de cierres:\*\* En cada ciclo, el worker guarda el \`close\` de cada vela en \`price\_history\` mediante \`INSERT ... ON CONFLICT DO UPDATE\` (en lotes de hasta 5000 filas), actualizando la vela del minuto en curso solo cuando el precio cambia (\`IS DISTINCT FROM\`).
+
+\#\# 7.2 Ingesta y Evaluación de Series Intradiarias  
+\- \*\*\`app/services/market\_series.py\`:\*\* Consulta la serie intradiaria de velas de Yahoo Finance (\`/v8/finance/chart/{ticker}?interval=1m&range=1d\`) de forma concurrente con \`asyncio.Semaphore(5)\`, obteniendo \`close\`, \`high\` y \`low\` como \`Decimal\`. Los bonos soberanos continúan consultándose en CompararFondos como lecturas puntuales (\`snapshot=True\`, con \`high = low = close\`).  
+\- \*\*\`app/worker/evaluation.py\` (funciones puras):\*\*  
+  \- \`complete\_candles\`: Excluye la vela en curso comparando el fin de la vela contra \`min(as\_of, now)\` (\`as\_of = meta.regularMarketTime\`).  
+  \- \`select\_candles\_to\_evaluate\`: Mantiene en memoria un cursor por activo (\`_cursors[asset\_id]\` con \`floor\`, \`evaluated\_until\` y \`last\_saved\`) para evaluar cada vela cerrada una única vez y no reevaluar velas previas al arranque del proceso.  
+  \- \`evaluate\_alert\`: Evalúa \`price\_min\` contra el \`low\` de la vela, \`price\_max\` contra el \`high\`, y \`percentage\` contra la mayor variación intravela (suba con \`high\` o baja con \`low\`), permitiendo detectar cruces de umbral aunque el precio haya revertido dentro del mismo minuto.  
+\- \*\*Ventana de Gracia Post-Cierre (Mitigación R1):\*\* Yahoo Finance entrega las velas de BYMA con \~20 minutos de demora y congela \`meta.regularMarketTime\` al cerrar la rueda. Cuando \`rueda.abierta\` pasa de \`True\` a \`False\`, \`run\_checker\_loop\` abre una ventana de gracia de hasta \`YAHOO\_POST\_CLOSE\_MINUTES\` minutos donde consulta únicamente Yahoo Finance. Si dos iteraciones consecutivas arrojan la misma firma (\`as\_of\` y última vela) o se alcanza el tiempo límite, fuerza el cierre de las velas pendientes (\`session\_closed=True\`), persiste y evalúa por última vez.  
+\- \*\*Nota R4 (Interacción con el Resumen Semanal):\*\* Dado que el resumen semanal calcula el rango \`[Mín, Máx]\` a partir de los cierres (\`close\`) persistidos en \`price\_history\`, mientras que las alertas se disparan evaluando los extremos intravela (\`high\` y \`low\`), un evento registrado en \`alert\_events\` puede informar un precio alcanzado levemente por fuera del rango \`[Mín, Máx]\` de cierres de la tabla semanal.
+
+\#\# 7.3 Variables de entorno  
+\- \`YAHOO\_INTERVAL\`: opcional (por defecto \`1m\`). Ancho de vela intradiaria solicitada a Yahoo Finance (\`1m\`, \`2m\`, \`5m\`, \`15m\`, \`30m\`, \`60m\`, \`90m\`).  
+\- \`YAHOO\_POST\_CLOSE\_MINUTES\`: opcional (por defecto \`15\`). Duración máxima en minutos de la ventana de gracia tras el cierre del mercado (\`0\` la desactiva).  
+
