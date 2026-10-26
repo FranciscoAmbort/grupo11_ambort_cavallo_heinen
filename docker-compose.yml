@@ -31,6 +31,8 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       YAHOO_INTERVAL: ${YAHOO_INTERVAL:-1m}
       YAHOO_POST_CLOSE_MINUTES: ${YAHOO_POST_CLOSE_MINUTES:-15}
+      WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-60}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
       - "8000:8000"
     volumes:
