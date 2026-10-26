@@ -27,11 +27,14 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       SECRET_KEY: ${SECRET_KEY:?Definir SECRET_KEY en .env}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
     ports:
       - "8000:8000"
     volumes:
       - ./app:/code/app
       - ./alembic:/code/alembic
+      - ./tests:/code/tests
     depends_on:
       db:
         condition: service_healthy

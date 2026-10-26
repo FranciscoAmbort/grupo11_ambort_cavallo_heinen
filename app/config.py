@@ -1,6 +1,10 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Nombre fijo (no un alias -latest, que puede cambiar de modelo sin aviso)
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 
 class Settings(BaseSettings):
@@ -31,6 +35,16 @@ class Settings(BaseSettings):
     # Client ID de Google OAuth; si está definido, se valida el "aud" del id_token.
     google_client_id: str = ""
 
+    # Resumen semanal con IA (Gemini). Sin clave la app funciona igual y el resumen
+    # muestra solo las estadísticas.
+    gemini_api_key: str = ""
+    gemini_model: str = DEFAULT_GEMINI_MODEL
+
+    @field_validator("gemini_model")
+    @classmethod
+    def _default_gemini_model(cls, value: str) -> str:
+        """Un GEMINI_MODEL vacío en el .env no debe pisar el modelo por defecto."""
+        return value.strip() or DEFAULT_GEMINI_MODEL
 
 
 @lru_cache
