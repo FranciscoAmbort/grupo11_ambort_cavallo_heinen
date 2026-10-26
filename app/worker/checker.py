@@ -28,7 +28,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import async_session_maker
-from app.models import Asset, Alert, User, UserAsset, PriceHistory
+from app.models import Asset, Alert, AlertEvent, User, UserAsset, PriceHistory
 from app.services.market import fetch_bonds_data, get_multiple_prices, is_market_open
 from app.services.email import send_email_alert
 from app.services.telegram import send_telegram_alert
@@ -220,7 +220,13 @@ async def check_market_and_evaluate_alerts() -> None:
                 alert.last_triggered_at = now_utc
                 alert.is_active = False  # Comportamiento One-Shot
 
-                await _notify_user(user, asset, alert.id, message)
+                notified = await _notify_user(user, asset, alert.id, message)
+                # Historial del disparo (se commitea junto con el resto del ciclo)
+                session.add(AlertEvent(
+                    alert_id=alert.id, user_id=alert.user_id, asset_id=alert.asset_id,
+                    alert_type=alert_type, threshold_value=threshold, price=current_price,
+                    notified=notified, triggered_at=now_utc,
+                ))
                 continue
 
             # ── 2. Alertas de Variación Porcentual - Re-anclaje Continuo ───────
@@ -255,7 +261,16 @@ async def check_market_and_evaluate_alerts() -> None:
                         alert.last_notified_price = current_price
                         # is_active permanece True
 
-                        await _notify_user(user, asset, alert.id, message)
+                        notified = await _notify_user(user, asset, alert.id, message)
+                        # Historial del disparo, con la variación con signo (+ subió, − bajó)
+                        signed_pct = (diff / ref_price) * Decimal("100")
+                        session.add(AlertEvent(
+                            alert_id=alert.id, user_id=alert.user_id, asset_id=alert.asset_id,
+                            alert_type=alert_type, threshold_value=threshold, price=current_price,
+                            # Numeric(9, 4): un valor fuera de rango haría fallar el commit de todo el ciclo
+                            change_pct=signed_pct if abs(signed_pct) < 100000 else None,
+                            notified=notified, triggered_at=now_utc,
+                        ))
 
         await session.commit()
         logger.info("Fase 3: Persistencia y evaluación completadas exitosamente.")
