@@ -82,6 +82,7 @@ async def login_with_google(
         value=token,
         httponly=True,
         samesite="lax",
+        secure=settings.cookie_secure,
         max_age=settings.access_token_expire_minutes * 60,
     )
     return user
@@ -131,7 +132,7 @@ async def test_telegram(current_user: User = Depends(get_current_user)) -> dict[
 
 @router.post("/logout")
 async def logout(response: Response) -> dict[str, str]:
-    """Cierra la sesión eliminando la cookie access_token."""
-    response.delete_cookie(ACCESS_TOKEN_COOKIE)
+    """Cierra la sesión eliminando la cookie access_token (con los mismos atributos con que se creó)."""
+    response.delete_cookie(ACCESS_TOKEN_COOKIE, httponly=True, samesite="lax", secure=settings.cookie_secure)
     return {"detail": "Sesión cerrada"}
 

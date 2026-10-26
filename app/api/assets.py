@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.database import get_session
-from app.models import Asset, PriceHistory, User, UserAsset
+from app.models import Alert, Asset, PriceHistory, User, UserAsset
 from app.schemas import AssetOut, PriceHistoryPoint, UserAssetAddRequest
 
 router = APIRouter()
@@ -130,7 +130,13 @@ async def remove_my_asset(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Quita un activo de la cartera del usuario (idempotente)."""
+    """Quita un activo de la cartera del usuario junto con sus alertas sobre ese activo (idempotente).
+
+    Los AlertEvent se conservan: su alert_id queda en NULL por el ON DELETE SET NULL.
+    """
+    await session.execute(
+        delete(Alert).where(Alert.user_id == current_user.id, Alert.asset_id == asset_id)
+    )
     await session.execute(
         delete(UserAsset).where(UserAsset.user_id == current_user.id, UserAsset.asset_id == asset_id)
     )

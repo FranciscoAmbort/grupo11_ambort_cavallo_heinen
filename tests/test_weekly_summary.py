@@ -65,7 +65,7 @@ def sample_stats(week):
 def test_week_range_current_week_starts_on_monday():
     week = week_range(0, WEDNESDAY)
     assert week.start == date(2026, 10, 19)
-    assert week.end == date(2026, 10, 25)
+    assert week.end == date(2026, 10, 23)
     assert week.partial is True
 
 
@@ -78,7 +78,7 @@ def test_week_range_converts_argentina_midnight_to_utc():
 def test_week_range_last_week():
     week = week_range(1, WEDNESDAY)
     assert week.start == date(2026, 10, 12)
-    assert week.end == date(2026, 10, 18)
+    assert week.end == date(2026, 10, 16)
     assert week.partial is False
 
 
@@ -191,7 +191,7 @@ def test_has_activity(week, sample_stats):
 
 def test_build_prompt_includes_market_data(sample_stats):
     prompt = build_prompt(sample_stats)
-    assert "Semana del lunes 12/10/2026 al domingo 18/10/2026 (semana cerrada)." in prompt
+    assert "Semana del lunes 12/10/2026 al viernes 16/10/2026 (semana cerrada)." in prompt
     assert "- GGAL.BA | Grupo Financiero Galicia | acción | ARS | primer precio 5930.00" in prompt
     assert "variación semanal +3.21% | 1820 lecturas" in prompt
     assert "variación semanal -1.10%" in prompt
