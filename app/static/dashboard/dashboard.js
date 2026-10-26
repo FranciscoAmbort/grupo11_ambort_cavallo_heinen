@@ -2,7 +2,8 @@
  * dashboard.js — Pantalla principal de MonitorPrecios.
  *
  * Columna izquierda: cartera del usuario y catálogo (pestañas, filtros, buscador).
- * Columna derecha:   cotización del activo seleccionado y su gráfico (Chart.js).
+ * Columna derecha:   cotización del activo seleccionado y su gráfico (Chart.js),
+ *                    y debajo el resumen semanal de la cartera analizado por IA.
  *
  * Endpoints que consume (todos con la cookie HttpOnly de sesión):
  *   GET    /api/auth/me                         usuario actual
@@ -11,6 +12,8 @@
  *   POST   /api/assets/me   { asset_ids: [id] } seguir un activo
  *   DELETE /api/assets/me/{asset_id}            dejar de seguir
  *   GET    /api/assets/{ticker}/history?limit=  lecturas de precio
+ *   GET    /api/summary/weekly?week_offset=     resumen semanal guardado (404 si no hay)
+ *   POST   /api/summary/weekly?week_offset=     generar el resumen semanal
  *
  * Cada 60 segundos se vuelven a pedir la cartera y el historial del activo
  * seleccionado. Ante un 401 se redirige al login.
@@ -48,6 +51,9 @@ const state = {
   historyRequestId: 0, // para descartar respuestas viejas al cambiar rápido de activo
   chart: null,
   refreshTimer: null,
+  summaryOffset: 0, // 0 = esta semana, 1 = semana pasada
+  summaryRequestId: 0, // para descartar respuestas viejas al cambiar de semana
+  summaryGenerating: false,
 };
 
 // ───────────────────────── Elementos de la página ─────────────────────────
@@ -63,6 +69,9 @@ const chartCanvasBox = $("#grafico-lienzo");
 const chartLoading = $("#grafico-cargando");
 const chartEmpty = $("#grafico-vacio");
 const chartError = $("#grafico-error");
+const summaryStatus = $("#resumen-estado");
+const summaryBody = $("#resumen-cuerpo");
+const summaryButton = $("#btn-resumen");
 
 // ───────────────────────── Utilidades ─────────────────────────
 
@@ -92,7 +101,9 @@ async function api(path, options = {}) {
     } catch {
       // La respuesta no era JSON.
     }
-    throw new Error(typeof detail === "string" ? detail : `El servidor respondió con un error (${res.status}).`);
+    const error = new Error(typeof detail === "string" ? detail : `El servidor respondió con un error (${res.status}).`);
+    error.status = res.status;
+    throw error;
   }
 
   return res.status === 204 ? null : res.json();
@@ -563,6 +574,214 @@ function setLimit(limit) {
   loadHistory();
 }
 
+// ───────────────────────── Resumen semanal ─────────────────────────
+
+// Títulos de sección que pide el prompt; se muestran destacados dentro del texto de la IA
+const SUMMARY_SECTIONS = ["Panorama general", "Lo más destacado", "Alertas de la semana", "Para tener en cuenta"];
+const SUMMARY_ALERT_LABELS = { percentage: "de variación", price_max: "de techo", price_min: "de piso" };
+
+/** Convierte "2026-10-19" en "19/10" (o "19/10/2026") sin pasar por Date, que correría el día por la zona horaria. */
+function formatIsoDay(isoDate, withYear = false) {
+  const [year, month, day] = String(isoDate).split("-");
+  return withYear ? `${day}/${month}/${year}` : `${day}/${month}`;
+}
+
+/** Formatea una variación con signo, por ejemplo "+2,49%" o "−1,96%"; "—" si no hay dato. */
+function formatSignedPercent(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  const trend = trendOf(value);
+  const sign = trend === "sube" ? "+" : trend === "baja" ? "−" : "";
+  const number = Math.abs(value).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${sign}${number}%`;
+}
+
+/** Muestra un mensaje de estado en la tarjeta (con spinner si `loading`) y oculta el contenido del resumen. */
+function setSummaryStatus(message, { loading = false, error = false } = {}) {
+  summaryStatus.textContent = "";
+  summaryStatus.classList.toggle("text-rose-200", error);
+  summaryStatus.classList.toggle("text-slate-400", !error);
+  if (loading) summaryStatus.append(el("span", "spinner"));
+  summaryStatus.append(el("span", null, message));
+  summaryStatus.classList.remove("hidden");
+  summaryBody.classList.add("hidden");
+  $("#resumen-rango").textContent = "";
+}
+
+/** Arma la fila de la tabla de un activo; si no tuvo lecturas en la semana, una sola celda "Sin datos". */
+function buildSummaryRow(asset) {
+  const row = el("tr");
+  const tickerCell = el("td");
+  tickerCell.title = asset.name;
+  tickerCell.append(el("span", "font-semibold text-white", asset.ticker));
+  row.append(tickerCell);
+
+  if (!asset.has_data) {
+    const empty = el("td", null, "Sin datos en la semana");
+    empty.colSpan = 6;
+    empty.dataset.vacio = "true";
+    row.append(empty);
+    return row;
+  }
+
+  for (const field of ["first_price", "last_price", "min_price", "max_price"]) {
+    row.append(el("td", null, formatPrice(asset[field], asset.currency)));
+  }
+  const variationCell = el("td");
+  const badge = el("span", "db-var", formatSignedPercent(asset.change_pct));
+  badge.dataset.signo = trendOf(asset.change_pct);
+  variationCell.append(badge);
+  row.append(variationCell, el("td", null, Number(asset.readings).toLocaleString("es-AR")));
+  return row;
+}
+
+/** Línea con el mejor y el peor activo y la cantidad de alertas disparadas por tipo. */
+function summaryHighlights(stats) {
+  const parts = [];
+  const { best, worst } = stats.totals;
+  if (best) parts.push(`Mejor: ${best.ticker} ${formatSignedPercent(best.change_pct)}`);
+  if (worst) parts.push(`Peor: ${worst.ticker} ${formatSignedPercent(worst.change_pct)}`);
+
+  const { total, by_type: byType } = stats.alerts;
+  if (total === 0) {
+    parts.push("Sin alertas disparadas");
+  } else {
+    // Orden fijo: JSONB no conserva el orden de las claves de by_type
+    const detail = Object.keys(SUMMARY_ALERT_LABELS)
+      .filter((type) => byType[type] > 0)
+      .map((type) => `${byType[type]} ${SUMMARY_ALERT_LABELS[type]}`)
+      .join(", ");
+    parts.push(`${total} ${total === 1 ? "alerta disparada" : "alertas disparadas"} (${detail})`);
+  }
+  return parts.join(" · ");
+}
+
+/** Arma el texto de la IA con textContent: los títulos de sección destacados y el resto en párrafos. */
+function buildSummaryText(content) {
+  const fragment = document.createDocumentFragment();
+  let paragraph = [];
+  const flush = () => {
+    if (paragraph.length > 0) fragment.append(el("p", "mt-1 whitespace-pre-line", paragraph.join("\n")));
+    paragraph = [];
+  };
+
+  for (const line of content.split("\n")) {
+    const clean = line.trim();
+    if (SUMMARY_SECTIONS.includes(clean.replace(/:$/, ""))) {
+      flush();
+      fragment.append(el("h3", "rs-seccion", clean.replace(/:$/, "")));
+    } else if (clean === "") {
+      flush();
+    } else {
+      paragraph.push(clean);
+    }
+  }
+  flush();
+  return fragment;
+}
+
+/** Dibuja el resumen: rango, tabla por activo, destacados, aviso de error y texto de la IA. */
+function renderSummary(data) {
+  const { stats } = data;
+  $("#resumen-rango").textContent =
+    `Semana del ${formatIsoDay(data.week_start)} al ${formatIsoDay(data.week_end, true)}` +
+    (stats.week.partial ? " · en curso" : "");
+
+  const rows = $("#resumen-filas");
+  rows.textContent = "";
+  if (stats.assets.length === 0) {
+    const row = el("tr");
+    const cell = el("td", null, "Tu cartera no tiene activos.");
+    cell.colSpan = 7;
+    cell.dataset.vacio = "true";
+    row.append(cell);
+    rows.append(row);
+  }
+  for (const asset of stats.assets) rows.append(buildSummaryRow(asset));
+  $("#resumen-destacados").textContent = summaryHighlights(stats);
+
+  // Si la IA no está disponible se muestran igual las estadísticas, con un aviso
+  const warning = $("#resumen-aviso");
+  warning.textContent = data.error ? `${data.error} Se muestran solo las estadísticas.` : "";
+  warning.classList.toggle("hidden", !data.error);
+
+  const text = $("#resumen-texto");
+  text.textContent = "";
+  text.classList.toggle("hidden", !data.content);
+  if (data.content) text.append(buildSummaryText(data.content));
+
+  const meta = [`Generado el ${formatDateTime(new Date(data.created_at))}`];
+  if (data.model) meta.push(`análisis con ${data.model}`);
+  if (data.from_cache) meta.push("guardado");
+  $("#resumen-meta").textContent = meta.join(" · ");
+
+  summaryStatus.textContent = "";
+  summaryStatus.classList.add("hidden");
+  summaryBody.classList.remove("hidden");
+}
+
+/** Bloquea el botón y el selector de semana mientras se genera el resumen. */
+function setSummaryGenerating(busy) {
+  state.summaryGenerating = busy;
+  summaryButton.disabled = busy;
+  summaryButton.setAttribute("aria-busy", String(busy));
+  summaryButton.textContent = "";
+  if (busy) summaryButton.append(el("span", "spinner"), el("span", null, "Generando..."));
+  else summaryButton.textContent = "Generar resumen";
+  document.querySelectorAll(".rs-semana").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+/** Pide el resumen guardado de la semana elegida; si todavía no hay, invita a generarlo. */
+async function loadSummary() {
+  const offset = state.summaryOffset;
+  const requestId = ++state.summaryRequestId;
+  setSummaryStatus("Buscando el resumen guardado...", { loading: true });
+
+  try {
+    const data = await api(`/api/summary/weekly?week_offset=${offset}`);
+    if (requestId === state.summaryRequestId) renderSummary(data);
+  } catch (error) {
+    if (requestId !== state.summaryRequestId) return;
+    if (error.status === 404) {
+      const week = offset === 0 ? "esta semana" : "la semana pasada";
+      setSummaryStatus(`Todavía no generaste el resumen de ${week}.`);
+    } else {
+      setSummaryStatus(`No se pudo cargar el resumen. ${error.message}`, { error: true });
+    }
+  }
+}
+
+/** Genera el resumen de la semana elegida (puede tardar varios segundos) y lo muestra. */
+async function generateSummary() {
+  if (state.summaryGenerating) return;
+  const offset = state.summaryOffset;
+  const requestId = ++state.summaryRequestId;
+  setSummaryGenerating(true);
+  setSummaryStatus("Generando el resumen, puede tardar unos segundos...", { loading: true });
+
+  try {
+    const data = await api(`/api/summary/weekly?week_offset=${offset}`, { method: "POST" });
+    if (requestId === state.summaryRequestId) renderSummary(data);
+  } catch (error) {
+    if (requestId === state.summaryRequestId) {
+      setSummaryStatus(`No se pudo generar el resumen. ${error.message}`, { error: true });
+    }
+  } finally {
+    setSummaryGenerating(false);
+  }
+}
+
+/** Cambia la semana del resumen y busca el guardado de esa semana. */
+function setSummaryOffset(offset) {
+  if (offset === state.summaryOffset || state.summaryGenerating) return;
+  state.summaryOffset = offset;
+  document.querySelectorAll(".rs-semana").forEach((button) => {
+    button.setAttribute("aria-pressed", String(Number(button.dataset.offset) === offset));
+  });
+  loadSummary();
+}
+
 // ───────────────────────── Actualización automática ─────────────────────────
 
 /** Lee una preferencia de localStorage; si el navegador lo bloquea, devuelve el valor por defecto. */
@@ -656,6 +875,12 @@ function bindEvents() {
     if (button) setLimit(Number(button.dataset.limit));
   });
 
+  $("#resumen-semanas").addEventListener("click", (event) => {
+    const button = event.target.closest(".rs-semana");
+    if (button) setSummaryOffset(Number(button.dataset.offset));
+  });
+  summaryButton.addEventListener("click", generateSummary);
+
   $("#btn-ver-todas").addEventListener("click", () => setCurrency("todas"));
   $("#btn-reintentar").addEventListener("click", () => loadHistory());
   $("#btn-plegar").addEventListener("click", toggleListCollapsed);
@@ -690,6 +915,7 @@ async function init() {
   setCurrency(readPref(PREF_CURRENCY_KEY, "todas"));
   ensureSelection();
   startAutoRefresh();
+  loadSummary();
 }
 
 init();

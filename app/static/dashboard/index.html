@@ -158,6 +158,52 @@
             </div>
           </div>
 
+          <!-- Resumen semanal de la cartera, con el análisis redactado por IA -->
+          <section id="resumen" class="mt-6 flex-shrink-0 rounded-xl border border-slate-700 bg-[#1e293b] p-4 sm:p-5" aria-labelledby="resumen-titulo">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 id="resumen-titulo" class="st-titulo">Resumen semanal</h2>
+                <p id="resumen-rango" class="mt-1 text-xs text-slate-400"></p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <div id="resumen-semanas" class="inline-flex rounded-lg bg-slate-800 p-1" role="group" aria-label="Semana del resumen">
+                  <button type="button" class="rs-semana" data-offset="0" aria-pressed="true">Esta semana</button>
+                  <button type="button" class="rs-semana" data-offset="1" aria-pressed="false">Semana pasada</button>
+                </div>
+                <button id="btn-resumen" type="button" class="al-btn-primario">Generar resumen</button>
+              </div>
+            </div>
+
+            <!-- Estado: cargando, generando, sin resumen todavía o error -->
+            <div id="resumen-estado" class="mt-4 flex items-center gap-3 text-sm text-slate-400" aria-live="polite"></div>
+
+            <div id="resumen-cuerpo" class="hidden">
+              <p id="resumen-aviso" class="mt-4 hidden rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200" role="status"></p>
+
+              <div class="db-scroll mt-4 overflow-x-auto">
+                <table class="rs-tabla">
+                  <caption class="sr-only">Estadísticas de la semana por activo</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Activo</th>
+                      <th scope="col">Primero</th>
+                      <th scope="col">Último</th>
+                      <th scope="col">Mín.</th>
+                      <th scope="col">Máx.</th>
+                      <th scope="col">Var. %</th>
+                      <th scope="col">Lecturas</th>
+                    </tr>
+                  </thead>
+                  <tbody id="resumen-filas"></tbody>
+                </table>
+              </div>
+              <p id="resumen-destacados" class="mt-3 text-xs text-slate-400"></p>
+
+              <div id="resumen-texto" class="mt-4 hidden border-t border-slate-700 pt-4 text-sm leading-relaxed text-slate-200"></div>
+              <p id="resumen-meta" class="mt-4 text-xs text-slate-500"></p>
+            </div>
+          </section>
+
           <!-- Crédito de la fuente de precios de bonos: se muestra siempre -->
           <p class="mt-3 flex-shrink-0 text-xs text-slate-500">
             Cotizaciones de bonos:

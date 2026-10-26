@@ -424,9 +424,10 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* Pestañas y selector de rango: mismo patrón de botón dentro de una pista */
+/* Pestañas, selector de rango y selector de semana: mismo patrón de botón dentro de una pista */
 .db-tab,
-.db-rango {
+.db-rango,
+.rs-semana {
   border-radius: 6px;
   padding: 0.4rem 0.6rem;
   font-size: 0.8125rem;
@@ -436,12 +437,14 @@
 }
 
 .db-tab:hover,
-.db-rango:hover {
+.db-rango:hover,
+.rs-semana:hover {
   color: #e2e8f0;
 }
 
 .db-tab[aria-selected="true"],
-.db-rango[aria-pressed="true"] {
+.db-rango[aria-pressed="true"],
+.rs-semana[aria-pressed="true"] {
   background: #6366f1;
   color: #ffffff;
 }
@@ -611,6 +614,65 @@ button.db-item:hover {
 .db-var[data-signo="neutro"] {
   background: #334155;
   color: #cbd5e1;
+}
+
+/* ───────────── Dashboard: resumen semanal ───────────── */
+
+.rs-semana:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Tabla compacta de estadísticas por activo */
+.rs-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rs-tabla th,
+.rs-tabla td {
+  padding: 0.45rem 0.6rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rs-tabla th {
+  border-bottom: 1px solid #334155;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.rs-tabla td {
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  color: #e2e8f0;
+}
+
+.rs-tabla tr:last-child td {
+  border-bottom: none;
+}
+
+.rs-tabla th:first-child,
+.rs-tabla td:first-child,
+.rs-tabla td[data-vacio="true"] {
+  text-align: left;
+}
+
+.rs-tabla td[data-vacio="true"] {
+  color: #64748b;
+}
+
+/* Títulos de las secciones del texto de la IA */
+.rs-seccion {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.rs-seccion:first-child {
+  margin-top: 0;
 }
 
 /* ───────────── Navegación entre pantallas ───────────── */
