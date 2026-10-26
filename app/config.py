@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     secret_key: str
     # Vigencia del JWT de sesión (por defecto 24 horas)
     access_token_expire_minutes: int = 60 * 24
+    # Atributo Secure de la cookie de sesión. False para que el login funcione en http://localhost;
+    # en producción (HTTPS) se configura COOKIE_SECURE=true.
+    cookie_secure: bool = False
     # Client ID de Google OAuth; si está definido, se valida el "aud" del id_token.
     google_client_id: str = ""
 

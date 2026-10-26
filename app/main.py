@@ -26,6 +26,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Maneja el arranque y apagado de la app; lanza el worker en segundo plano y cierra conexiones."""
+    if not settings.google_client_id:
+        logger.warning("GOOGLE_CLIENT_ID vacío: no se valida el 'aud' del id_token de Google.")
+
     # Arrancar tarea en segundo plano
     worker_task = asyncio.create_task(run_checker_loop(interval_seconds=settings.worker_interval_seconds))
     logger.info("Worker de monitoreo lanzado en segundo plano.")
