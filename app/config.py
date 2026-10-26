@@ -1,3 +1,4 @@
+from datetime import timedelta
 from functools import lru_cache
 
 from pydantic import field_validator
@@ -5,6 +6,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Nombre fijo (no un alias -latest, que puede cambiar de modelo sin aviso)
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
+
+# Intervalos intradiarios de Yahoo Finance que admite la serie de velas, con su duración
+YAHOO_INTERVALS = {
+    "1m": timedelta(minutes=1),
+    "2m": timedelta(minutes=2),
+    "5m": timedelta(minutes=5),
+    "15m": timedelta(minutes=15),
+    "30m": timedelta(minutes=30),
+    "60m": timedelta(minutes=60),
+    "90m": timedelta(minutes=90),
+}
+DEFAULT_YAHOO_INTERVAL = "1m"
 
 
 class Settings(BaseSettings):
@@ -28,6 +41,9 @@ class Settings(BaseSettings):
     # Intervalo de chequeo del background worker en segundos
     worker_interval_seconds: int = 60
 
+    # Ancho de cada vela de la serie intradiaria que se pide a Yahoo (interval de /v8/finance/chart)
+    yahoo_interval: str = DEFAULT_YAHOO_INTERVAL
+
     # Clave de firma de los JWT de sesión (HS256). Sin valor por defecto.
     secret_key: str
     # Vigencia del JWT de sesión (por defecto 24 horas)
@@ -45,6 +61,20 @@ class Settings(BaseSettings):
     def _default_gemini_model(cls, value: str) -> str:
         """Un GEMINI_MODEL vacío en el .env no debe pisar el modelo por defecto."""
         return value.strip() or DEFAULT_GEMINI_MODEL
+
+    @field_validator("yahoo_interval")
+    @classmethod
+    def _validate_yahoo_interval(cls, value: str) -> str:
+        """Vacío usa el valor por defecto; cualquier otro valor tiene que ser un intervalo intradiario conocido."""
+        value = value.strip() or DEFAULT_YAHOO_INTERVAL
+        if value not in YAHOO_INTERVALS:
+            raise ValueError(f"YAHOO_INTERVAL debe ser uno de: {', '.join(YAHOO_INTERVALS)}")
+        return value
+
+    @property
+    def yahoo_interval_delta(self) -> timedelta:
+        """Duración de cada vela según yahoo_interval."""
+        return YAHOO_INTERVALS[self.yahoo_interval]
 
 
 @lru_cache
