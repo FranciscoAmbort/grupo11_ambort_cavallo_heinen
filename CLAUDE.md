@@ -249,3 +249,22 @@ Estas reglas son de cumplimiento estricto. Cualquier implementación generada po
 1\. \*\*Configuración Centralizada:\*\*  
    \- Ninguna URL de base de datos, credencial de Google OAuth o token de Telegram debe escribirse fija en el código fuente.  
    \- Todas las variables deben leerse a través de \`app/config.py\` utilizando \`pydantic-settings\` contra el entorno del sistema y el archivo \`.env\`.  
+
+\---
+
+\# 6\. Resumen Semanal Analizado por IA
+
+\#\# 6.1 Tablas nuevas (migración 0004)  
+\- \*\*\`alert\_events\`:\*\* historial de disparos de alertas. \`app/worker/checker.py\` agrega un \`AlertEvent\` en \*\*cada disparo\*\* (umbral fijo y variación porcentual), dentro de la misma transacción del ciclo. Copia el tipo, el umbral, el precio, \`change\_pct\` (con signo, solo en las porcentuales) y \`notified\` (resultado del aviso). \`alert\_id\` es \`ON DELETE SET NULL\`: el historial sobrevive aunque se borre la alerta.  
+\- \*\*\`weekly\_summaries\`:\*\* caché del resumen por usuario y semana (\`UNIQUE(user\_id, week\_start)\`, con \`week\_start\` = lunes en hora argentina). Guarda \`stats\` (JSONB), el texto de la IA y el modelo usado. Solo se guardan los resúmenes generados con éxito.
+
+\#\# 6.2 Flujo  
+\- \`app/services/weekly\_summary.py\` calcula las estadísticas de la semana (lunes a domingo, \`America/Argentina/Buenos\_Aires\`) con 3 consultas agregadas y arma el prompt con funciones puras, testeadas en \`tests/\`. Al modelo se le mandan solo tickers, nombres de activos y números, nunca datos del usuario.  
+\- \`app/services/ai.py\` llama a la API REST de Gemini con \`httpx\` (la key viaja en el header \`x-goog-api-key\`, nunca en la URL). \*\*Excepción a §5.2:\*\* timeout de 60 segundos, porque generar texto tarda más que consultar precios.  
+\- API: \`GET\` y \`POST /api/summary/weekly?week\_offset=0|1\` (0 = semana actual, 1 = semana pasada). El POST regenera la semana actual solo si el guardado tiene más de 1 hora, y la pasada solo si se había generado antes de que la semana cerrara.  
+\- Sin \`GEMINI\_API\_KEY\`, o si Gemini falla, se devuelven igual las estadísticas con \`content = null\` y un \`error\` legible.  
+\- Datos de prueba (solo desarrollo): \`python -m app.dev\_fake\_week <email> [--yes]\`.
+
+\#\# 6.3 Variables de entorno  
+\- \`GEMINI\_API\_KEY\`: opcional (vacía por defecto). Sin ella la app funciona y el resumen muestra solo estadísticas.  
+\- \`GEMINI\_MODEL\`: opcional (por defecto \`gemini-3.5-flash-lite\`). Usar un nombre de modelo fijo, no un alias \`-latest\`.  
