@@ -4,9 +4,10 @@ app/services/weekly_summary.py
 Resumen semanal de la actividad de la cartera de un usuario, con conclusiones
 redactadas por la IA (app/services/ai.py) y guardadas en weekly_summaries.
 
-La semana va de lunes 00:00 a domingo 23:59:59 en hora argentina; las consultas
-usan ese rango convertido a UTC. week_offset 0 es la semana en curso (parcial,
-hasta ahora) y 1 la semana pasada.
+La semana se presenta de lunes a viernes (los días de rueda); la ventana de datos va
+de lunes 00:00 hasta el lunes siguiente 00:00 en hora argentina, y las consultas usan
+ese rango convertido a UTC. week_offset 0 es la semana en curso (parcial, hasta ahora)
+y 1 la semana pasada.
 
 Las estadísticas se resuelven con tres consultas agregadas (precios por activo,
 conteo de disparos por tipo y detalle de disparos), sin loops por activo ni traer
@@ -84,17 +85,21 @@ Panorama general
 Lo más destacado
 Alertas de la semana
 Para tener en cuenta
-Si no hubo alertas, decilo en "Alertas de la semana"."""
+Si no hubo alertas, decilo en "Alertas de la semana".
+Las cotizaciones solo existen de lunes a viernes, en horario de rueda: no menciones sábados ni domingos."""
 
 
 # ── Tipos ─────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class WeekRange:
-    """Semana de lunes a domingo en hora argentina, con sus límites en UTC para las consultas."""
+    """
+    Semana que se presenta de lunes a viernes en hora argentina, con sus límites en UTC para
+    las consultas: la ventana de datos llega hasta el lunes siguiente 00:00.
+    """
 
     start: date  # lunes
-    end: date  # domingo
+    end: date  # viernes, último día de rueda (solo para mostrar; las consultas usan end_utc)
     start_utc: datetime  # lunes 00:00 AR
     end_utc: datetime  # lunes siguiente 00:00 AR (límite excluyente)
     partial: bool  # True para la semana en curso
@@ -154,7 +159,7 @@ def week_range(week_offset: int, now: datetime | None = None) -> WeekRange:
     next_monday = monday + timedelta(days=7)
     return WeekRange(
         start=monday,
-        end=monday + timedelta(days=6),
+        end=monday + timedelta(days=4),
         start_utc=datetime.combine(monday, time.min, tzinfo=WEEK_TZ).astimezone(timezone.utc),
         end_utc=datetime.combine(next_monday, time.min, tzinfo=WEEK_TZ).astimezone(timezone.utc),
         partial=week_offset == 0,
@@ -268,7 +273,7 @@ def build_prompt(stats: Mapping[str, Any]) -> str:
     week = stats["week"]
     state = "semana en curso, datos hasta ahora" if week["partial"] else "semana cerrada"
     lines = [
-        f"Semana del lunes {_fmt_date(week['start'])} al domingo {_fmt_date(week['end'])} ({state}).",
+        f"Semana del lunes {_fmt_date(week['start'])} al viernes {_fmt_date(week['end'])} ({state}).",
         "Las cotizaciones se registran solo durante el horario de rueda. Horarios en hora de Argentina.",
         "",
         f"ACTIVOS DE LA CARTERA ({len(stats['assets'])})",
