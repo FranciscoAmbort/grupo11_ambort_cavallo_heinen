@@ -1,5 +1,6 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -139,3 +140,18 @@ class AlertOut(BaseModel):
     is_active: bool
     last_triggered_at: datetime | None
     created_at: datetime
+
+
+class WeeklySummaryOut(BaseModel):
+    """Resumen semanal: estadísticas de la cartera y texto de la IA (null si no está disponible)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    week_start: date
+    week_end: date
+    stats: dict[str, Any]
+    content: str | None
+    error: str | None = None
+    model: str | None
+    created_at: datetime
+    from_cache: bool

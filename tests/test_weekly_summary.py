@@ -13,6 +13,7 @@ from app.services.weekly_summary import (
     build_stats,
     has_activity,
     is_cache_valid,
+    is_summary_current,
     week_range,
 )
 
@@ -235,3 +236,17 @@ def test_cache_last_week_only_if_generated_after_week_closed():
     assert is_cache_valid(1, week.end_utc + timedelta(minutes=5), week, WEDNESDAY) is True
     # Generado a mitad de esa semana (como "Esta semana"): datos parciales, hay que regenerar
     assert is_cache_valid(1, week.end_utc - timedelta(days=3), week, WEDNESDAY) is False
+
+
+def test_saved_current_week_is_shown_even_if_older_than_one_hour():
+    week = week_range(0, WEDNESDAY)
+    created_at = WEDNESDAY - timedelta(hours=5)
+    # El GET lo muestra aunque el POST ya lo pueda regenerar
+    assert is_summary_current(0, created_at, week) is True
+    assert is_cache_valid(0, created_at, week, WEDNESDAY) is False
+
+
+def test_saved_last_week_is_shown_only_if_generated_after_week_closed():
+    week = week_range(1, WEDNESDAY)
+    assert is_summary_current(1, week.end_utc + timedelta(hours=1), week) is True
+    assert is_summary_current(1, week.end_utc - timedelta(days=2), week) is False

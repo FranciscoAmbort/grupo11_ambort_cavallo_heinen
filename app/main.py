@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.alerts import router as alerts_router
 from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
+from app.api.summary import router as summary_router
 from app.config import settings
 from app.database import engine, get_session
 from app.schemas import PublicConfigOut
@@ -50,6 +51,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(assets_router, prefix="/api/assets", tags=["assets"])
 app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(summary_router, prefix="/api/summary", tags=["summary"])
 
 
 @app.get("/api/config", response_model=PublicConfigOut, tags=["config"])

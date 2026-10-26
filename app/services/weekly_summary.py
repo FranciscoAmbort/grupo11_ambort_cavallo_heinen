@@ -21,7 +21,8 @@ Funciones públicas:
   build_stats(week, asset_rows, alert_counts, events)    → dict
   build_prompt(stats)                                    → str
   has_activity(stats)                                    → bool
-  is_cache_valid(week_offset, created_at, week, now)     → bool
+  is_summary_current(week_offset, created_at, week)      → bool   (el GET lo puede mostrar)
+  is_cache_valid(week_offset, created_at, week, now)     → bool   (el POST no regenera)
   get_cached_summary(session, user_id, week_offset)      → SummaryResult | None
   generate_weekly_summary(session, user_id, week_offset) → SummaryResult
 """
@@ -329,16 +330,26 @@ def build_prompt(stats: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def is_summary_current(week_offset: int, created_at: datetime, week: WeekRange) -> bool:
+    """
+    Indica si un resumen guardado corresponde a la semana pedida y se puede mostrar.
+
+    Semana en curso: siempre. Semana pasada: solo si se generó con la semana ya cerrada
+    (si se generó a mitad de semana, como "esta semana", la misma fila tiene datos parciales).
+    """
+    return week_offset == 0 or created_at >= week.end_utc
+
+
 def is_cache_valid(week_offset: int, created_at: datetime, week: WeekRange, now: datetime) -> bool:
     """
-    Indica si un resumen guardado se puede devolver sin regenerarlo.
+    Indica si un resumen guardado se puede devolver al pedir generarlo, sin llamar a la IA.
 
-    Semana en curso: mientras tenga menos de 1 hora. Semana pasada: solo si se generó con la
-    semana ya cerrada (si se generó a mitad de semana, la misma fila tiene datos parciales).
+    Semana en curso: mientras tenga menos de 1 hora. Semana pasada: si está vigente
+    (generada con la semana cerrada), ya no cambia.
     """
     if week_offset == 0:
         return now - created_at < CACHE_TTL_CURRENT_WEEK
-    return created_at >= week.end_utc
+    return is_summary_current(week_offset, created_at, week)
 
 
 # ── Acceso a la base ──────────────────────────────────────────────────────────
@@ -429,18 +440,8 @@ async def _load_summary(session: AsyncSession, user_id: int, week: WeekRange) ->
     )
 
 
-async def get_cached_summary(
-    session: AsyncSession,
-    user_id: int,
-    week_offset: int,
-    now: datetime | None = None,
-) -> SummaryResult | None:
-    """Devuelve el resumen guardado si existe y sigue siendo válido para esa semana; si no, None."""
-    now = now or datetime.now(timezone.utc)
-    week = week_range(week_offset, now)
-    summary = await _load_summary(session, user_id, week)
-    if summary is None or not is_cache_valid(week_offset, summary.created_at, week, now):
-        return None
+def _cached_result(summary: WeeklySummary, week: WeekRange) -> SummaryResult:
+    """Convierte un resumen guardado en el resultado que devuelve la API."""
     return SummaryResult(
         week_start=week.start,
         week_end=week.end,
@@ -453,6 +454,20 @@ async def get_cached_summary(
     )
 
 
+async def get_cached_summary(
+    session: AsyncSession,
+    user_id: int,
+    week_offset: int,
+    now: datetime | None = None,
+) -> SummaryResult | None:
+    """Devuelve el resumen guardado de esa semana si existe y está vigente (ver is_summary_current)."""
+    week = week_range(week_offset, now)
+    summary = await _load_summary(session, user_id, week)
+    if summary is None or not is_summary_current(week_offset, summary.created_at, week):
+        return None
+    return _cached_result(summary, week)
+
+
 async def generate_weekly_summary(session: AsyncSession, user_id: int, week_offset: int) -> SummaryResult:
     """
     Devuelve el resumen de la semana: el guardado si sigue siendo válido o uno nuevo.
@@ -462,11 +477,11 @@ async def generate_weekly_summary(session: AsyncSession, user_id: int, week_offs
     resúmenes generados por la IA se guardan en caché.
     """
     now = datetime.now(timezone.utc)
-    cached = await get_cached_summary(session, user_id, week_offset, now)
-    if cached is not None:
-        return cached
-
     week = week_range(week_offset, now)
+    saved = await _load_summary(session, user_id, week)
+    if saved is not None and is_cache_valid(week_offset, saved.created_at, week, now):
+        return _cached_result(saved, week)
+
     stats = await fetch_week_stats(session, user_id, week)
     # Cierra la transacción de lectura para no retener una conexión durante la llamada a la IA
     await session.commit()
