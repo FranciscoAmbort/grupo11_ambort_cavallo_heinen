@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.database import get_session
-from app.models import Alert, Asset, User
+from app.models import Alert, Asset, PriceHistory, User
 from app.schemas import AlertCreateRequest, AlertOut, AlertUpdateRequest
 
 router = APIRouter()
@@ -50,6 +50,16 @@ async def list_alerts(
     return [_to_alert_out(alert, ticker) for alert, ticker in result.all()]
 
 
+def _latest_asset_state_stmt(asset_id: int):
+    """Subconsulta con el último (price, timestamp) registrado en price_history para el activo."""
+    return (
+        select(PriceHistory.price, PriceHistory.timestamp)
+        .where(PriceHistory.asset_id == asset_id)
+        .order_by(PriceHistory.timestamp.desc(), PriceHistory.id.desc())
+        .limit(1)
+    )
+
+
 @router.post("", response_model=AlertOut, status_code=status.HTTP_201_CREATED)
 async def create_alert(
     payload: AlertCreateRequest,
@@ -61,14 +71,24 @@ async def create_alert(
     if ticker is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Activo no encontrado")
 
+    # Última lectura guardada: sirve como piso temporal (para no quedar bloqueada 20 min por el
+    # delay de Yahoo frente a func.now()) y como referencia inicial en alertas porcentuales.
+    latest_row = (await session.execute(_latest_asset_state_stmt(payload.asset_id))).first()
+    last_price = latest_row[0] if latest_row else None
+    last_ts = latest_row[1] if latest_row else None
+
+    db_type = API_TO_DB_TYPE[payload.alert_type]
     value = payload.threshold_percent if payload.alert_type == "PCT_CHANGE" else payload.target_price
     alert = Alert(
         user_id=current_user.id,
         asset_id=payload.asset_id,
-        alert_type=API_TO_DB_TYPE[payload.alert_type],
+        alert_type=db_type,
         threshold_value=Decimal(str(value)),
         is_active=True,
+        last_notified_price=last_price if db_type == "percentage" else None,
     )
+    if last_ts is not None:
+        alert.created_at = last_ts
     session.add(alert)
     await session.commit()
     await session.refresh(alert)
@@ -95,6 +115,12 @@ async def update_alert(
     alert, ticker = row
 
     changes_rule = any(v is not None for v in (payload.alert_type, payload.target_price, payload.threshold_percent))
+    latest_row = None
+    if changes_rule or (payload.is_active is True and not alert.is_active):
+        latest_row = (await session.execute(_latest_asset_state_stmt(alert.asset_id))).first()
+    last_price = latest_row[0] if latest_row else None
+    last_ts = latest_row[1] if latest_row else None
+
     if changes_rule:
         api_type = payload.alert_type or DB_TO_API_TYPE[alert.alert_type]
         value = payload.threshold_percent if api_type == "PCT_CHANGE" else payload.target_price
@@ -106,15 +132,19 @@ async def update_alert(
             )
         alert.alert_type = API_TO_DB_TYPE[api_type]
         alert.threshold_value = Decimal(str(value))
-        # La condición cambió: la referencia de variación se vuelve a fijar en el próximo ciclo
-        alert.last_notified_price = None
+        # La condición cambió: toma como referencia el precio actual en pantalla
+        alert.last_notified_price = last_price if alert.alert_type == "percentage" else None
+        if last_ts is not None:
+            alert.created_at = last_ts
 
     if payload.is_active is not None and payload.is_active != alert.is_active:
         alert.is_active = payload.is_active
         if payload.is_active:
-            # Reactivar es volver a armar la alerta desde cero
+            # Reactivar evalúa desde la última lectura actual y re-ancla la referencia porcentual
             alert.last_triggered_at = None
-            alert.last_notified_price = None
+            alert.last_notified_price = last_price if alert.alert_type == "percentage" else None
+            if last_ts is not None:
+                alert.created_at = last_ts
 
     await session.commit()
     await session.refresh(alert)
