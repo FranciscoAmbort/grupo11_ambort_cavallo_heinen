@@ -306,3 +306,53 @@ def test_trigger_message_for_every_type(alert_type):
     alert = Alert(alert_type=alert_type, threshold_value=Decimal("1"), last_notified_price=Decimal("60"))
     message = _trigger_message(alert, asset, AlertResult(hit, hit.close, True, Decimal("2.5")))
     assert "AL30" in message and "11:00" in message and "USD" in message
+
+
+# ── Ventana de gracia y estabilidad (R1) ──────────────────────────────────────
+
+def test_complete_candles_session_closed_forces_all_candles():
+    # En rueda con as_of atrasado a 14:03, vela de 14:04 queda en curso
+    series = _series(*[candle(m, m) for m in range(5)], as_of=at(4, 30))
+    candles_normal = complete_candles(series, MINUTE, at(10))
+    assert len(candles_normal) == 4  # 14:00 .. 14:03
+
+    # Fuera de rueda (session_closed=True), as_of congelado no frena la última vela
+    candles_closed = complete_candles(series, MINUTE, at(10), session_closed=True)
+    assert len(candles_closed) == 5  # 14:00 .. 14:04
+
+
+def test_series_signature_and_grace_decision_stable():
+    from app.worker.evaluation import GraceWindow, grace_decision, series_signature
+
+    series_map = {
+        "GGAL.BA": _series(candle(0, 100), candle(1, 101), as_of=at(1, 40)),
+        "AL30": PriceSeries([candle(0, 60)], as_of=at(0), snapshot=True),  # bonos no cuentan
+    }
+    sig1 = series_signature(series_map)
+    assert "GGAL.BA" in sig1
+    assert "AL30" not in sig1
+
+    deadline = at(30)
+    window = GraceWindow(deadline=deadline, last_signature=None)
+    # Primera pasada: firma no coincide con None -> continue
+    decision1 = grace_decision(window, sig1, at(15))
+    assert decision1 == "continue"
+
+    # Segunda pasada con misma firma -> stable
+    window2 = GraceWindow(deadline=deadline, last_signature=sig1)
+    decision2 = grace_decision(window2, sig1, at(17))
+    assert decision2 == "stable"
+
+
+def test_grace_decision_deadline_reached():
+    from app.worker.evaluation import GraceWindow, grace_decision, series_signature
+
+    series_map = {"GGAL.BA": _series(candle(0, 100), as_of=at(0))}
+    sig = series_signature(series_map)
+
+    deadline = at(30)
+    window = GraceWindow(deadline=deadline, last_signature=None)
+    # Si se alcanza o pasa deadline sin firma repetida -> deadline
+    assert grace_decision(window, sig, at(30)) == "deadline"
+    assert grace_decision(window, sig, at(35)) == "deadline"
+

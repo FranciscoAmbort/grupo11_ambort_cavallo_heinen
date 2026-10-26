@@ -5,9 +5,12 @@ Funciones puras (sin base de datos ni red) que usa el worker para trabajar con
 las velas intradiarias de cada activo:
 
   candles_to_store(series, last_saved)           → velas a guardar con upsert
-  complete_candles(series, interval, now)        → velas cerradas (excluye la vela en curso)
+  complete_candles(series, interval, now, session_closed=False)
+                                                 → velas cerradas (excluye la vela en curso)
   select_candles_to_evaluate(complete, cursor)   → velas todavía no evaluadas y cursor nuevo
   evaluate_alert(type, umbral, ref, creada, velas) → disparo, anclaje o nada
+  series_signature(series_map)                   → {ticker: (as_of, última vela)} de Yahoo
+  grace_decision(window, signature, now)         → seguir, cerrar por estabilidad o por tiempo
 
 Reglas de evaluación (sobre velas en orden cronológico, máximo un disparo por llamada):
   - price_min:  primera vela con low  <= umbral; precio del disparo = low.
@@ -17,11 +20,19 @@ Reglas de evaluación (sobre velas en orden cronológico, máximo un disparo por
                 las dos, la mayor) y se re-ancla al precio alcanzado. Sin referencia,
                 se ancla al close de la última vela sin disparar.
 Las velas que empiezan antes de la creación de la alerta se ignoran.
+
+Ventana de gracia post-cierre (mitigación R1): Yahoo entrega las velas de BYMA con
+~20 minutos de demora y, al cerrar la rueda, deja congelado meta.regularMarketTime.
+Después del cierre el worker sigue consultando Yahoo hasta que dos pasadas seguidas
+devuelven la misma firma (serie estable) o vence el plazo; en esa última pasada las
+velas pendientes se cierran a la fuerza (session_closed=True).
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from app.services.market_series import Candle, PriceSeries
 
@@ -61,15 +72,27 @@ def candles_to_store(series: PriceSeries, last_saved: datetime | None) -> list[C
     return [candle for candle in series.candles if candle.timestamp >= last_saved]
 
 
-def complete_candles(series: PriceSeries, interval: timedelta, now: datetime) -> list[Candle]:
+def complete_candles(
+    series: PriceSeries,
+    interval: timedelta,
+    now: datetime,
+    *,
+    session_closed: bool = False,
+) -> list[Candle]:
     """
     Velas cerradas: su intervalo terminó antes del último dato de la serie (as_of) y antes
     de ahora. La vela que contiene as_of es la del minuto en curso y queda afuera hasta que
     cierre. Los bonos (snapshot) son lecturas puntuales y están completos.
+
+    Con session_closed (última pasada de la ventana de gracia, rueda terminada) el límite es
+    `now`: as_of queda congelado al cierre y, si no, la última vela del día nunca cerraría.
     """
     if series.snapshot:
         return list(series.candles)
-    limit = min(series.as_of, now) if series.as_of is not None else now
+    if session_closed or series.as_of is None:
+        limit = now
+    else:
+        limit = min(series.as_of, now)
     return [candle for candle in series.candles if candle.timestamp + interval <= limit]
 
 
@@ -135,3 +158,45 @@ def evaluate_alert(
                 return AlertResult(candle, candle.low, True, -fall)
 
     return None
+
+
+# ── Ventana de gracia post-cierre ─────────────────────────────────────────────
+
+# Firma de una pasada: por ticker de Yahoo, (as_of, inicio de la última vela)
+SeriesSignature = dict[str, tuple[datetime | None, datetime]]
+GraceDecision = Literal["continue", "stable", "deadline"]
+
+
+@dataclass(frozen=True)
+class GraceWindow:
+    """Ventana de gracia abierta al cerrar la rueda: plazo máximo y firma de la pasada anterior."""
+
+    deadline: datetime
+    last_signature: SeriesSignature | None = None
+
+
+def series_signature(series_map: Mapping[str, PriceSeries]) -> SeriesSignature:
+    """Firma de las series de Yahoo (los bonos snapshot no cuentan): as_of y última vela por ticker."""
+    return {
+        ticker: (series.as_of, series.candles[-1].timestamp)
+        for ticker, series in series_map.items()
+        if not series.snapshot and series.candles
+    }
+
+
+def grace_decision(window: GraceWindow, signature: SeriesSignature, now: datetime) -> GraceDecision:
+    """
+    Qué hacer en una pasada de la ventana de gracia:
+
+      - "stable":   la firma no está vacía y es igual a la de la pasada anterior
+                    (Yahoo terminó de entregar la rueda) → cerrar las velas y terminar.
+      - "deadline": venció el plazo sin estabilidad → cerrar las velas igual y terminar.
+      - "continue": seguir con la próxima pasada.
+
+    Si se cumplen las dos condiciones gana "stable" (cierre normal, sin advertencia).
+    """
+    if signature and signature == window.last_signature:
+        return "stable"
+    if now >= window.deadline:
+        return "deadline"
+    return "continue"

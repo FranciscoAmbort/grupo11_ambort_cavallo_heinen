@@ -1,7 +1,7 @@
 from datetime import timedelta
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Nombre fijo (no un alias -latest, que puede cambiar de modelo sin aviso)
@@ -43,6 +43,10 @@ class Settings(BaseSettings):
 
     # Ancho de cada vela de la serie intradiaria que se pide a Yahoo (interval de /v8/finance/chart)
     yahoo_interval: str = DEFAULT_YAHOO_INTERVAL
+
+    # Minutos que el worker sigue consultando Yahoo después de que rueda.abierta pasa a False,
+    # para cerrar las velas que Yahoo entrega con demora (ventana de gracia). 0 la desactiva.
+    yahoo_post_close_minutes: int = Field(default=15, ge=0)
 
     # Clave de firma de los JWT de sesión (HS256). Sin valor por defecto.
     secret_key: str

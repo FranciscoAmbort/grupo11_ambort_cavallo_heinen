@@ -23,7 +23,7 @@ Flujo en 3 Fases (AGENTS.md §5.1):
 
 import asyncio
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from zoneinfo import ZoneInfo
 
@@ -40,10 +40,13 @@ from app.services.telegram import send_telegram_alert
 from app.worker.evaluation import (
     AlertResult,
     AssetCursor,
+    GraceWindow,
     candles_to_store,
     complete_candles,
     evaluate_alert,
+    grace_decision,
     select_candles_to_evaluate,
+    series_signature,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,9 @@ _last_market_open: bool | None = None
 # Por activo (asset_id): hasta qué vela se evaluó y se guardó en este proceso.
 # Vive en memoria: al reiniciar, cada activo vuelve a evaluar solo su última vela completa.
 _cursors: dict[int, AssetCursor] = {}
+
+# Ventana de gracia post-cierre en curso (None fuera de ella). También vive en memoria.
+_grace: GraceWindow | None = None
 
 # Hora de la vela que se muestra en las notificaciones
 _AR_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
@@ -317,13 +323,178 @@ async def check_market_and_evaluate_alerts() -> None:
         logger.info("Fase 3: Persistencia y evaluación completadas exitosamente.")
 
 
+async def _execute_grace_cycle(session, now_utc: datetime) -> bool:
+    """
+    Ejecuta una pasada de la ventana de gracia:
+      1. Obtiene tickers que no sean bonos (solo acciones y cedears seguidos o con alertas activas).
+      2. Pide series a Yahoo Finance (get_multiple_series sin bonds_data).
+      3. Decide con grace_decision qué hacer según la firma de Yahoo (estabilidad vs deadline).
+      4. Si la decisión es 'stable' o 'deadline', fuerza session_closed=True.
+      5. Guarda en BD y evalúa alertas.
+    Retorna True si la ventana de gracia debe finalizar (break), False si continúa.
+    """
+    global _grace
+
+    if _grace is None:
+        return True
+
+    # Fase 1: Tickers excluyendo bonos
+    stmt_user_assets = (
+        select(distinct(Asset.ticker), Asset.asset_type)
+        .join(UserAsset, UserAsset.asset_id == Asset.id)
+        .where(Asset.is_active.is_(True), Asset.asset_type != "bond")
+    )
+    res_ua = await session.execute(stmt_user_assets)
+    assets_map: dict[str, str] = dict(res_ua.all())
+
+    stmt_alerts = (
+        select(distinct(Asset.ticker), Asset.asset_type)
+        .join(Alert, Alert.asset_id == Asset.id)
+        .where(Alert.is_active.is_(True), Asset.is_active.is_(True), Asset.asset_type != "bond")
+    )
+    res_al = await session.execute(stmt_alerts)
+    assets_map.update(dict(res_al.all()))
+
+    if not assets_map:
+        logger.debug("Ventana de gracia: no hay activos de Yahoo para monitorear.")
+        _grace = None
+        return True
+
+    # Fase 2: Solo Yahoo
+    series_map: dict[str, PriceSeries] = await get_multiple_series(
+        assets_map, bonds_data=None, interval=settings.yahoo_interval
+    )
+    if not series_map:
+        logger.warning("Ventana de gracia: no se obtuvieron series de Yahoo.")
+        if now_utc >= _grace.deadline:
+            logger.warning("Ventana de gracia finalizada por límite de tiempo sin respuesta de Yahoo.")
+            _grace = None
+            return True
+        return False
+
+    current_sig = series_signature(series_map)
+    decision = grace_decision(_grace, current_sig, now_utc)
+
+    session_closed = decision in ("stable", "deadline")
+    if decision == "stable":
+        logger.info("Ventana de gracia: series estables detectadas. Forzando cierre final de velas.")
+    elif decision == "deadline":
+        logger.warning("Ventana de gracia: se alcanzó el tiempo límite sin lograr estabilidad. Forzando cierre final.")
+
+    # Fase 3: Upsert y evaluación
+    stmt_assets = select(Asset).where(Asset.ticker.in_(list(series_map.keys())))
+    res_assets = await session.execute(stmt_assets)
+    assets_by_ticker = {asset.ticker: asset for asset in res_assets.scalars().all()}
+    assets_by_id = {asset.id: asset for asset in assets_by_ticker.values()}
+
+    unseen_ids = [asset_id for asset_id in assets_by_id if asset_id not in _cursors]
+    if unseen_ids:
+        stmt_last = (
+            select(PriceHistory.asset_id, func.max(PriceHistory.timestamp))
+            .where(PriceHistory.asset_id.in_(unseen_ids))
+            .group_by(PriceHistory.asset_id)
+        )
+        last_by_id = dict((await session.execute(stmt_last)).all())
+        for asset_id in unseen_ids:
+            last = last_by_id.get(asset_id)
+            _cursors[asset_id] = AssetCursor(floor=last, last_saved=last)
+
+    rows: list[dict] = []
+    pending_by_asset: dict[int, list[Candle]] = {}
+    next_cursors: dict[int, AssetCursor] = {}
+    for ticker, series in series_map.items():
+        asset = assets_by_ticker.get(ticker)
+        if asset is None:
+            continue
+        cursor = _cursors[asset.id]
+        to_store = candles_to_store(series, cursor.last_saved)
+        rows += [{"asset_id": asset.id, "price": c.close, "timestamp": c.timestamp} for c in to_store]
+        complete = complete_candles(
+            series, settings.yahoo_interval_delta, now_utc, session_closed=session_closed
+        )
+        pending, cursor = select_candles_to_evaluate(complete, cursor)
+        if to_store:
+            cursor = replace(cursor, last_saved=to_store[-1].timestamp)
+        next_cursors[asset.id] = cursor
+        if pending:
+            pending_by_asset[asset.id] = pending
+
+    await _upsert_prices(session, rows)
+
+    active_alerts = []
+    if pending_by_asset:
+        stmt_active_alerts = select(Alert).where(
+            Alert.is_active.is_(True),
+            Alert.asset_id.in_(list(pending_by_asset.keys())),
+        )
+        active_alerts = (await session.execute(stmt_active_alerts)).scalars().all()
+
+    if active_alerts:
+        user_ids = {alert.user_id for alert in active_alerts}
+        stmt_users = select(User).where(User.id.in_(list(user_ids)))
+        res_users = await session.execute(stmt_users)
+        users_by_id = {user.id: user for user in res_users.scalars().all()}
+
+        for alert in active_alerts:
+            asset = assets_by_id.get(alert.asset_id)
+            user = users_by_id.get(alert.user_id)
+            if not asset or not user:
+                continue
+
+            result = evaluate_alert(
+                alert.alert_type,
+                alert.threshold_value,
+                alert.last_notified_price,
+                alert.created_at,
+                pending_by_asset[alert.asset_id],
+            )
+            if result is None:
+                continue
+
+            if not result.triggered:
+                alert.last_notified_price = result.price
+                continue
+
+            message = _trigger_message(alert, asset, result)
+            triggered_at = result.candle.timestamp
+            alert.last_triggered_at = triggered_at
+            if alert.alert_type == "percentage":
+                alert.last_notified_price = result.price
+            else:
+                alert.is_active = False
+
+            notified = await _notify_user(user, asset, alert.id, message)
+            change_pct = result.change_pct
+            session.add(AlertEvent(
+                alert_id=alert.id, user_id=alert.user_id, asset_id=alert.asset_id,
+                alert_type=alert.alert_type, threshold_value=alert.threshold_value, price=result.price,
+                change_pct=change_pct if change_pct is not None and abs(change_pct) < 100000 else None,
+                notified=notified, triggered_at=triggered_at,
+            ))
+
+    await session.commit()
+    _cursors.update(next_cursors)
+
+    if session_closed:
+        _grace = None
+        return True
+
+    # Seguir en gracia: actualizar firma previa
+    _grace = GraceWindow(deadline=_grace.deadline, last_signature=current_sig)
+    return False
+
+
 async def run_checker_loop(interval_seconds: int = 60) -> None:
     """
     Bucle asíncrono infinito que ejecuta el ciclo de monitoreo en segundo plano.
     Captura excepciones para no tumbar la tarea y respeta cancelaciones limpias.
+
+    Maneja la ventana de gracia cuando el mercado acaba de cerrar (True -> False).
     """
+    global _grace
     logger.info("Iniciando background worker de monitoreo (intervalo: %ds)...", interval_seconds)
     while True:
+        prev_open = _last_market_open
         try:
             await check_market_and_evaluate_alerts()
         except asyncio.CancelledError:
@@ -331,6 +502,35 @@ async def run_checker_loop(interval_seconds: int = 60) -> None:
             break
         except Exception as exc:
             logger.exception("Error durante la ejecución del ciclo del worker: %s", exc)
+
+        # Detección de cierre de mercado: pasó de True a False
+        if prev_open is True and _last_market_open is False and settings.yahoo_post_close_minutes > 0:
+            logger.info(
+                "Detectado cierre de rueda (mercado cerrado). Iniciando ventana de gracia de %d min para Yahoo...",
+                settings.yahoo_post_close_minutes,
+            )
+            now_utc = datetime.now(timezone.utc)
+            _grace = GraceWindow(deadline=now_utc + timedelta(minutes=settings.yahoo_post_close_minutes))
+
+            while _grace is not None:
+                try:
+                    await asyncio.sleep(interval_seconds)
+                except asyncio.CancelledError:
+                    logger.info("Background worker cancelado durante ventana de gracia.")
+                    return
+
+                try:
+                    now_iter = datetime.now(timezone.utc)
+                    async with async_session_maker() as session:
+                        done = await _execute_grace_cycle(session, now_iter)
+                        if done:
+                            logger.info("Ventana de gracia concluida.")
+                            break
+                except asyncio.CancelledError:
+                    logger.info("Background worker cancelado durante ciclo de gracia.")
+                    return
+                except Exception as exc:
+                    logger.exception("Error durante ciclo de la ventana de gracia: %s", exc)
 
         try:
             await asyncio.sleep(interval_seconds)
