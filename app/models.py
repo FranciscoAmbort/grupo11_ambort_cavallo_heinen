@@ -72,7 +72,9 @@ class Alert(Base):
 
 class PriceHistory(Base):
     __tablename__ = "price_history"
-    __table_args__ = (Index("ix_price_history_asset_timestamp", "asset_id", "timestamp"),)
+    # Una lectura por activo y momento: el worker guarda cada vela con upsert sobre este par.
+    # La restricción incluye el índice (asset_id, timestamp) que usan el gráfico y el resumen semanal.
+    __table_args__ = (UniqueConstraint("asset_id", "timestamp", name="uq_price_history_asset_timestamp"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"))
