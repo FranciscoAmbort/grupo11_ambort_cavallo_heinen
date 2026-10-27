@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # para cerrar las velas que Yahoo entrega con demora (ventana de gracia). 0 la desactiva.
     yahoo_post_close_minutes: int = Field(default=15, ge=0)
 
+    # Topes del catálogo a pedido: activos que puede seguir cada usuario y activos totales del
+    # catálogo (cada activo seguido suma consultas a Yahoo y filas en price_history).
+    max_assets_per_user: int = Field(default=40, ge=1)
+    max_catalog_assets: int = Field(default=60, ge=1)
+
     # Clave de firma de los JWT de sesión (HS256). Sin valor por defecto.
     secret_key: str
     # Vigencia del JWT de sesión (por defecto 24 horas)

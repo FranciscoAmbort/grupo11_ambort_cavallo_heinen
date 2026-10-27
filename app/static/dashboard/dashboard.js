@@ -10,6 +10,8 @@
  *   GET    /api/assets/me                       cartera
  *   GET    /api/assets                          catálogo
  *   POST   /api/assets/me   { asset_ids: [id] } seguir un activo
+ *   GET    /api/assets/search?q=                activos del mercado que no están en el catálogo
+ *   POST   /api/assets/custom { ticker, asset_type } seguir un activo del mercado
  *   DELETE /api/assets/me/{asset_id}            dejar de seguir
  *   GET    /api/assets/{ticker}/history?limit=  lecturas de precio
  *   GET    /api/summary/weekly?week_offset=     resumen semanal guardado (404 si no hay)
@@ -25,6 +27,8 @@ const LOGIN_URL = "/";
 const ONBOARDING_URL = "/onboarding";
 const REFRESH_INTERVAL_MS = 60000;
 const DEFAULT_LIMIT = 60;
+// Espera desde la última tecla antes de buscar en el mercado
+const MARKET_SEARCH_DELAY_MS = 250;
 
 // Preferencia guardada en el navegador desde la pantalla Perfil (settings.js)
 const PREF_CURRENCY_KEY = "mp.pref.divisa";
@@ -45,6 +49,10 @@ const state = {
   category: "all", // "all" | "stock" | "bond" | "cedear"
   currency: "todas", // "todas" | "ARS" | "USD" (preferencia del usuario)
   search: "",
+  marketResults: [], // activos del mercado para marketQuery (se muestran debajo del catálogo)
+  marketQuery: "", // búsqueda a la que corresponden marketResults
+  marketRequestId: 0, // para descartar respuestas viejas mientras se sigue escribiendo
+  marketTimer: null,
   selectedTicker: null,
   limit: DEFAULT_LIMIT,
   history: [], // lecturas válidas del activo seleccionado
@@ -251,7 +259,8 @@ function renderCatalog() {
   }
 
   const assets = applyFilters(state.catalog);
-  if (assets.length === 0) {
+  const marketAssets = visibleMarketResults();
+  if (assets.length === 0 && marketAssets.length === 0) {
     listBox.appendChild(el("p", "px-1 py-6 text-center text-sm text-slate-400", "Ningún activo coincide con el filtro."));
     return;
   }
@@ -270,6 +279,132 @@ function renderCatalog() {
     item.append(buildAssetInfo(asset), button);
     listBox.appendChild(item);
   }
+
+  // Los activos del mercado van en la misma lista, debajo y con el mismo diseño
+  for (const candidate of marketAssets) listBox.appendChild(buildMarketItem(candidate));
+}
+
+/**
+ * Resultados del mercado que corresponden a la búsqueda actual: sin los que ya están en el
+ * catálogo ni repetidos, y con los filtros de categoría y divisa (la divisa solo se conoce en los bonos).
+ */
+function visibleMarketResults() {
+  if (state.marketQuery !== state.search.trim()) return [];
+
+  const catalogTickers = new Set(state.catalog.map((asset) => asset.ticker.toUpperCase()));
+  const seen = new Set();
+  return state.marketResults.filter((candidate) => {
+    const ticker = String(candidate.ticker).toUpperCase();
+    if (catalogTickers.has(ticker) || seen.has(ticker)) return false;
+    seen.add(ticker);
+
+    const isBond = candidate.asset_type === "bond";
+    const matchesCategory = state.category === "all" || (isBond ? state.category === "bond" : state.category !== "bond");
+    const matchesCurrency = state.currency === "todas" || !candidate.currency || candidate.currency === state.currency;
+    return matchesCategory && matchesCurrency;
+  });
+}
+
+/**
+ * Arma la fila de un activo del mercado: igual a las del catálogo, con el botón Seguir.
+ * Los que no son bonos llevan un selector chico Acción / CEDEAR que arranca en type_hint.
+ */
+function buildMarketItem(candidate) {
+  const item = el("div", "db-item");
+  const isBond = candidate.asset_type === "bond";
+
+  let info;
+  if (isBond) {
+    info = buildAssetInfo(candidate);
+  } else {
+    info = el("span", "min-w-0 flex-1");
+    const firstLine = el("span", "flex items-center gap-2");
+    firstLine.append(el("span", "db-item-ticker", candidate.ticker));
+
+    const typeSelect = el("select", "db-select-tipo");
+    typeSelect.setAttribute("aria-label", `Tipo de ${candidate.ticker}`);
+    for (const value of ["stock", "cedear"]) {
+      const option = el("option", null, categoryLabel(value));
+      option.value = value;
+      typeSelect.append(option);
+    }
+    typeSelect.value = candidate.type_hint === "stock" ? "stock" : "cedear";
+    typeSelect.dataset.tipo = typeSelect.value;
+    firstLine.append(typeSelect);
+
+    info.append(firstLine, el("span", "db-item-nombre", candidate.name));
+  }
+
+  const button = el("button", "db-btn-seguir", "+ Seguir");
+  button.type = "button";
+  button.dataset.marketTicker = candidate.ticker;
+  if (isBond) button.dataset.marketType = "bond";
+  button.dataset.siguiendo = "false";
+  button.setAttribute("aria-label", `Seguir ${candidate.ticker}`);
+
+  item.append(info, button);
+  return item;
+}
+
+/**
+ * Programa la búsqueda en el mercado para el texto actual (con espera entre teclas).
+ * Fuera de la pestaña del catálogo, o con el buscador vacío, descarta los resultados.
+ */
+function scheduleMarketSearch() {
+  clearTimeout(state.marketTimer);
+  state.marketRequestId++; // invalida la respuesta que esté en camino
+  const query = state.search.trim();
+  if (state.tab !== "catalog" || !query) {
+    state.marketResults = [];
+    state.marketQuery = "";
+    return;
+  }
+  state.marketTimer = setTimeout(() => searchMarket(query), MARKET_SEARCH_DELAY_MS);
+}
+
+/** Busca en el mercado; si falla (429, 503 o cualquier error) quedan solo los resultados locales, sin avisos. */
+async function searchMarket(query) {
+  const requestId = ++state.marketRequestId;
+  let results = [];
+  try {
+    results = await api(`/api/assets/search?q=${encodeURIComponent(query)}`);
+  } catch {
+    results = [];
+  }
+  if (requestId !== state.marketRequestId) return;
+
+  state.marketResults = Array.isArray(results) ? results : [];
+  state.marketQuery = query;
+  if (state.tab === "catalog") renderList();
+}
+
+/** Sigue un activo del mercado: lo da de alta si hace falta y refresca la cartera y el catálogo. */
+async function followMarket(button) {
+  const ticker = button.dataset.marketTicker;
+  const typeSelect = button.closest(".db-item")?.querySelector(".db-select-tipo");
+  const assetType = button.dataset.marketType || typeSelect?.value || "cedear";
+
+  button.disabled = true;
+  try {
+    state.myAssets = await api("/api/assets/custom", {
+      method: "POST",
+      body: JSON.stringify({ ticker, asset_type: assetType }),
+    });
+  } catch (error) {
+    // Seguir sí avisa: tope de activos (409), proveedor caído, etc. El texto viene del backend.
+    showToast(error.message);
+    button.disabled = false;
+    return;
+  }
+
+  state.marketResults = state.marketResults.filter((candidate) => candidate.ticker !== ticker);
+  try {
+    state.catalog = await api("/api/assets");
+  } catch {
+    // Si falla, el catálogo se actualiza al volver a abrir la pestaña; la cartera ya quedó al día
+  }
+  renderList();
+  ensureSelection();
 }
 
 /** Dibuja la lista que corresponde a la pestaña activa. */
@@ -285,6 +420,8 @@ async function setTab(tab) {
     button.setAttribute("aria-selected", String(button.dataset.tab === tab));
   });
   renderList();
+  // Al abrir el catálogo con texto en el buscador también se busca en el mercado
+  scheduleMarketSearch();
 
   if (tab === "catalog" && !state.catalogLoaded) {
     try {
@@ -854,9 +991,11 @@ function bindEvents() {
     if (chip) setCategory(chip.dataset.categoria);
   });
 
+  // El catálogo local se filtra al instante; en paralelo se busca en el mercado
   searchInput.addEventListener("input", () => {
     state.search = searchInput.value;
     renderList();
+    scheduleMarketSearch();
   });
 
   // Un solo listener para toda la lista: seleccionar, seguir/dejar de seguir o ir al catálogo
@@ -864,10 +1003,18 @@ function bindEvents() {
     const followButton = event.target.closest(".db-btn-seguir[data-asset-id]");
     if (followButton) return toggleFollow(followButton);
 
+    const marketButton = event.target.closest(".db-btn-seguir[data-market-ticker]");
+    if (marketButton) return followMarket(marketButton);
+
     if (event.target.closest('[data-accion="ir-al-catalogo"]')) return setTab("catalog");
 
     const item = event.target.closest("button.db-item[data-ticker]");
     if (item && item.dataset.ticker !== state.selectedTicker) selectAsset(item.dataset.ticker);
+  });
+
+  // El color del selector Acción / CEDEAR sigue al tipo elegido, como los badges
+  listBox.addEventListener("change", (event) => {
+    if (event.target.matches(".db-select-tipo")) event.target.dataset.tipo = event.target.value;
   });
 
   $("#rangos").addEventListener("click", (event) => {

@@ -106,7 +106,9 @@ El sistema resuelve un problema de I/O masivo: un proceso en segundo plano consu
 │   ├── test_ai.py
 │   ├── test_alert_evaluation.py
 │   ├── test_assets_api.py
+│   ├── test_assets_catalog_api.py
 │   ├── test_auth_cookie.py
+│   ├── test_catalog.py
 │   ├── test_market_series.py
 │   └── test_weekly_summary.py
 └── app/
@@ -124,6 +126,7 @@ El sistema resuelve un problema de I/O masivo: un proceso en segundo plano consu
     │   ├── alerts.py          # /api/alerts
     │   └── summary.py         # /api/summary
     ├── services/
+    │   ├── catalog.py         # Catálogo a pedido: búsqueda y validación en Yahoo y CompararFondos
     │   ├── market.py          # URL, cabeceras y timeout de Yahoo; bonos y estado del mercado (CompararFondos)
     │   ├── market_series.py   # Series intradiarias de velas (lo que usa el worker)
     │   ├── telegram.py
@@ -144,7 +147,7 @@ El sistema resuelve un problema de I/O masivo: un proceso en segundo plano consu
         └── settings/
 ```
 
-`app/services/market.py` conserva `get_ticker_price` y `get_multiple_prices` (precio puntual), pero el worker usa `get_multiple_series` de `market_series.py`, que reutiliza la URL, las cabeceras, el timeout y la consulta de bonos de `market.py`.
+`app/services/market.py` contiene la URL, las cabeceras y el timeout de Yahoo, y la consulta de bonos y del estado del mercado a CompararFondos. El worker usa `get_multiple_series` de `market_series.py`, que reutiliza esas constantes y la consulta de bonos.
 
 ### 3.2 Endpoints
 
@@ -157,7 +160,9 @@ El sistema resuelve un problema de I/O masivo: un proceso en segundo plano consu
 | `POST /api/auth/logout` | Borra la cookie de sesión |
 | `GET /api/assets?asset_type=` | Catálogo de activos activos con su último precio |
 | `GET /api/assets/me` | Cartera del usuario |
-| `POST /api/assets/me` | Agrega activos (idempotente) y completa el onboarding |
+| `POST /api/assets/me` | Agrega activos (idempotente) y completa el onboarding; 409 si se pasa `MAX_ASSETS_PER_USER` |
+| `GET /api/assets/search?q=` | Activos del mercado que todavía no están en el catálogo (sección 9) |
+| `POST /api/assets/custom` | Sigue un activo del mercado y lo agrega al catálogo si hace falta (sección 9) |
 | `DELETE /api/assets/me/{asset_id}` | Quita el activo y borra las alertas del usuario sobre él, en la misma transacción (idempotente, 204) |
 | `GET /api/assets/{ticker}/history?limit=` | Últimas cotizaciones para el gráfico |
 | `GET /api/alerts` | Alertas del usuario (activas e inactivas) |
@@ -404,9 +409,38 @@ Las de la app se leen en `app/config.py`; las `POSTGRES_*` las usa solo `docker-
 | `TELEGRAM_BOT_TOKEN` | No | vacío | Sin token no se envían mensajes por Telegram |
 | `BREVO_API_KEY`, `EMAIL_FROM` | No | vacíos | Correo de respaldo; si falta alguno no se envían correos |
 | `WORKER_INTERVAL_SECONDS` | No | `60` | Segundos entre ciclos del worker (y entre pasadas de la ventana de gracia) |
+| `MAX_ASSETS_PER_USER` | No | `40` | Activos que puede seguir cada usuario (sección 9) |
+| `MAX_CATALOG_ASSETS` | No | `60` | Activos totales del catálogo, seed incluido (sección 9) |
 | `YAHOO_INTERVAL` | No | `1m` | Ancho de vela: `1m`, `2m`, `5m`, `15m`, `30m`, `60m` o `90m`. Vacío usa `1m` |
 | `YAHOO_POST_CLOSE_MINUTES` | No | `15` | Duración máxima de la ventana de gracia; `0` la desactiva |
 | `GEMINI_API_KEY` | No | vacío | Sin clave el resumen muestra solo las estadísticas |
 | `GEMINI_MODEL` | No | `gemini-3.5-flash-lite` | Usar un nombre de modelo fijo, nunca un alias `-latest`. Vacío usa el valor por defecto |
 
 Fuera de Docker, una variable numérica o booleana vacía en el `.env` (por ejemplo `YAHOO_POST_CLOSE_MINUTES=`) hace fallar el arranque: hay que dejarle un valor o borrar la línea. Las únicas que aceptan vacío y caen en su valor por defecto son `YAHOO_INTERVAL` y `GEMINI_MODEL`.
+
+## 9. Catálogo a pedido
+
+El catálogo arranca con el seed y crece cuando un usuario sigue un activo del mercado que no estaba. La lógica está en `app/services/catalog.py` y los endpoints en `app/api/assets.py`.
+
+- **`GET /api/assets/search?q=`** (1 a 40 caracteres): busca por ticker o nombre y devuelve hasta 20 activos del mercado que no están en el catálogo. Oculta las variantes `XD.BA`, `XC.BA` y `XB.BA` cuando `X.BA` ya está. Responde 429 al pasar el límite de búsquedas. Nunca falla por culpa de Yahoo: si Yahoo no responde, devuelve solo los bonos.
+- **`POST /api/assets/custom`** `{ticker, asset_type}`: si el ticker ya está en el catálogo lo reutiliza con su tipo y su moneda, sin consultar al proveedor; si no, lo valida contra su proveedor y lo da de alta. Después lo suma a la cartera y devuelve la cartera, como `POST /api/assets/me`. Códigos:
+  - 400: formato o tipo inválido.
+  - 404: el proveedor no conoce el ticker.
+  - 409: tope del usuario, catálogo lleno o activo deshabilitado.
+  - 503: el proveedor no responde.
+- **Topes:**
+  - `MAX_ASSETS_PER_USER` (40) se aplica también en `POST /api/assets/me`. Los activos ya seguidos no cuentan como nuevos. Al pasarse, responde 409 con el detail "Llegaste al máximo de activos que podés seguir", que el dashboard y el onboarding muestran como aviso.
+  - `MAX_CATALOG_ASSETS` (60) cuenta todo el catálogo, seed incluido. Las altas se serializan con un advisory lock de PostgreSQL. Los activos no se borran solos y cuentan aunque nadie los siga: liberar lugar requiere SQL manual.
+- **Catálogo compartido:** un activo nuevo lo ven todos en el catálogo y en el onboarding. Se monitorea solo si alguien lo sigue o tiene alertas activas (Fase 1 del worker, 5.1).
+- **Fuentes:**
+  - **Bonos:** solo los de tipo "Soberano" de CompararFondos con precio no ambiguo, guardados sin sufijo (`GD46`). La moneda es USD si existe la especie `<base>D`; si no, ARS.
+  - **Acciones y CEDEARs:** Yahoo Finance, con sufijo `.BA` y mercado `BUE`. La búsqueda usa `/v1/finance/search`; la validación, `/v8/finance/chart`, de donde salen el nombre y la moneda.
+  - `type_hint` es solo una sugerencia de acción o CEDEAR a partir del nombre corto de Yahoo: el tipo lo elige el usuario.
+- **Límites y cachés en memoria** (por proceso; se reinician con cada deploy):
+  - 60 búsquedas por minuto por usuario.
+  - Lista de bonos: 10 minutos.
+  - Resultado de cada consulta: 5 minutos. Si Yahoo falló, no se guarda.
+- **Seguridad:**
+  - El ticker se valida con una regex (`TICKER_RE`: hasta 12 letras o números, con sufijo `.BA` opcional) antes de armar cualquier URL.
+  - El texto buscado viaja solo como parámetro de consulta.
+  - En el dashboard, todo lo que viene de la API se inserta con `textContent`.
