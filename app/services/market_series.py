@@ -172,7 +172,7 @@ async def get_multiple_series(
     now: datetime | None = None,
 ) -> dict[str, PriceSeries]:
     """
-    Equivalente a get_multiple_prices, pero devuelve series de velas.
+    Consulta en paralelo las series de velas de varios activos, una sola vez por ticker.
 
     Parámetros:
       tickers    – Mapeo {ticker: asset_type}.

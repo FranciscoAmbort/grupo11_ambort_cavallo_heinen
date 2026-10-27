@@ -147,7 +147,7 @@ El sistema resuelve un problema de I/O masivo: un proceso en segundo plano consu
         └── settings/
 ```
 
-`app/services/market.py` conserva `get_ticker_price` y `get_multiple_prices` (precio puntual), pero el worker usa `get_multiple_series` de `market_series.py`, que reutiliza la URL, las cabeceras, el timeout y la consulta de bonos de `market.py`.
+`app/services/market.py` contiene la URL, las cabeceras y el timeout de Yahoo, y la consulta de bonos y del estado del mercado a CompararFondos. El worker usa `get_multiple_series` de `market_series.py`, que reutiliza esas constantes y la consulta de bonos.
 
 ### 3.2 Endpoints
 
