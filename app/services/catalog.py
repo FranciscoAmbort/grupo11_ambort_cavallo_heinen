@@ -89,7 +89,7 @@ class MarketCandidate:
 
     ticker: str  # "VIST.BA" (Yahoo) o "GD46" (bono)
     name: str
-    asset_type: str | None  # "bond"; None en Yahoo (el usuario elige acción o CEDEAR)
+    asset_type: str | None  # "bond"; None en Yahoo (el tipo sale de type_hint y se aplica automáticamente)
     currency: str | None  # bonos: "USD" o "ARS"; Yahoo: None (la búsqueda no trae la moneda)
     type_hint: str | None  # Yahoo: "cedear" o "stock" según el nombre; bonos: None
 

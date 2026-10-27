@@ -168,7 +168,7 @@ def test_type_hint_cedear(short_name):
         "EMPRESA DISTR Y COMERC NORTE ED",
         "TRANSPORTADORA DE GAS DEL SUR S",
         "BOLSAS Y MERCADOS ARGENTINOS SA",
-        # Caso conocido: CEDEAR sin señal en el nombre truncado; el usuario corrige el selector
+        # Caso conocido: CEDEAR sin señal en el nombre truncado; type_hint lo sugiere como acción y se aplica así
         "EXXONMOBIL HOLDINGS CORPORATION",
         None,
         "",

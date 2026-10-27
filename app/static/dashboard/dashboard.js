@@ -305,44 +305,25 @@ function visibleMarketResults() {
   });
 }
 
-/**
- * Arma la fila de un activo del mercado: igual a las del catálogo, con el botón Seguir.
- * Los que no son bonos llevan un selector chico Acción / CEDEAR que arranca en type_hint.
- */
+/** Tipo con que se da de alta un activo del mercado: los bonos son "bond"; en Yahoo lo decide type_hint. */
+function marketAssetType(candidate) {
+  if (candidate.asset_type === "bond") return "bond";
+  return candidate.type_hint === "stock" ? "stock" : "cedear";
+}
+
+/** Arma la fila de un activo del mercado: igual a las del catálogo, con su tipo como badge y el botón Seguir. */
 function buildMarketItem(candidate) {
   const item = el("div", "db-item");
-  const isBond = candidate.asset_type === "bond";
-
-  let info;
-  if (isBond) {
-    info = buildAssetInfo(candidate);
-  } else {
-    info = el("span", "min-w-0 flex-1");
-    const firstLine = el("span", "flex items-center gap-2");
-    firstLine.append(el("span", "db-item-ticker", candidate.ticker));
-
-    const typeSelect = el("select", "db-select-tipo");
-    typeSelect.setAttribute("aria-label", `Tipo de ${candidate.ticker}`);
-    for (const value of ["stock", "cedear"]) {
-      const option = el("option", null, categoryLabel(value));
-      option.value = value;
-      typeSelect.append(option);
-    }
-    typeSelect.value = candidate.type_hint === "stock" ? "stock" : "cedear";
-    typeSelect.dataset.tipo = typeSelect.value;
-    firstLine.append(typeSelect);
-
-    info.append(firstLine, el("span", "db-item-nombre", candidate.name));
-  }
+  const assetType = marketAssetType(candidate);
 
   const button = el("button", "db-btn-seguir", "+ Seguir");
   button.type = "button";
   button.dataset.marketTicker = candidate.ticker;
-  if (isBond) button.dataset.marketType = "bond";
+  button.dataset.marketType = assetType;
   button.dataset.siguiendo = "false";
   button.setAttribute("aria-label", `Seguir ${candidate.ticker}`);
 
-  item.append(info, button);
+  item.append(buildAssetInfo({ ...candidate, asset_type: assetType }), button);
   return item;
 }
 
@@ -381,8 +362,7 @@ async function searchMarket(query) {
 /** Sigue un activo del mercado: lo da de alta si hace falta y refresca la cartera y el catálogo. */
 async function followMarket(button) {
   const ticker = button.dataset.marketTicker;
-  const typeSelect = button.closest(".db-item")?.querySelector(".db-select-tipo");
-  const assetType = button.dataset.marketType || typeSelect?.value || "cedear";
+  const assetType = button.dataset.marketType;
 
   button.disabled = true;
   try {
@@ -1010,11 +990,6 @@ function bindEvents() {
 
     const item = event.target.closest("button.db-item[data-ticker]");
     if (item && item.dataset.ticker !== state.selectedTicker) selectAsset(item.dataset.ticker);
-  });
-
-  // El color del selector Acción / CEDEAR sigue al tipo elegido, como los badges
-  listBox.addEventListener("change", (event) => {
-    if (event.target.matches(".db-select-tipo")) event.target.dataset.tipo = event.target.value;
   });
 
   $("#rangos").addEventListener("click", (event) => {

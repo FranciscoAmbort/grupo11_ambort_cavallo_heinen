@@ -66,11 +66,11 @@ class MarketCandidateOut(BaseModel):
 
     ticker: str
     name: str
-    # "bond" en los bonos; None en Yahoo, donde el usuario elige acción o CEDEAR
+    # "bond" en los bonos; None en Yahoo, donde el tipo lo define type_hint
     asset_type: str | None
     # Solo en los bonos: la búsqueda de Yahoo no trae la moneda
     currency: str | None
-    # Yahoo: "cedear" o "stock" según el nombre, para preseleccionar el tipo
+    # Yahoo: "cedear" o "stock", sugerido a partir del nombre y aplicado automáticamente al dar de alta
     type_hint: str | None
 
 
