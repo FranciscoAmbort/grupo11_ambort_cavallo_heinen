@@ -13,8 +13,8 @@
     />
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="/theme.js?v=20261028"></script>
-    <link rel="stylesheet" href="/styles.css?v=20261028" />
+    <script src="/theme.js?v=20261029"></script>
+    <link rel="stylesheet" href="/styles.css?v=20261029" />
 
     <!-- Chart.js para el gráfico de cotización -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -180,7 +180,7 @@
             <div id="resumen-cuerpo" class="hidden">
               <p id="resumen-aviso" class="mt-4 hidden rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200" role="status"></p>
 
-              <div class="db-scroll mt-4 overflow-x-auto">
+              <div id="resumen-tabla" class="db-scroll mt-4 overflow-x-auto">
                 <table class="rs-tabla">
                   <caption class="sr-only">Estadísticas de la semana por activo</caption>
                   <thead>
@@ -197,6 +197,7 @@
                   <tbody id="resumen-filas"></tbody>
                 </table>
               </div>
+              <p id="resumen-sin-datos" class="mt-3 hidden text-xs text-slate-500"></p>
               <p id="resumen-destacados" class="mt-3 text-xs text-slate-400"></p>
 
               <div id="resumen-texto" class="mt-4 hidden border-t border-slate-700 pt-4 text-sm leading-relaxed text-slate-200"></div>
@@ -217,6 +218,6 @@
     <!-- Avisos de error o confirmación -->
     <div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4" aria-live="assertive"></div>
 
-    <script src="/dashboard/dashboard.js?v=20261028"></script>
+    <script src="/dashboard/dashboard.js?v=20261029"></script>
   </body>
 </html>
