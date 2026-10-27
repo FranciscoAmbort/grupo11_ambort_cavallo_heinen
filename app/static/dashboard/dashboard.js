@@ -694,7 +694,7 @@ function setLimit(limit) {
 // ───────────────────────── Resumen semanal ─────────────────────────
 
 // Títulos de sección que pide el prompt; se muestran destacados dentro del texto de la IA
-const SUMMARY_SECTIONS = ["Panorama general", "Lo más destacado", "Alertas de la semana", "Para tener en cuenta"];
+const SUMMARY_SECTIONS = ["Panorama general", "Lo más destacado", "Alertas de la semana"];
 const SUMMARY_ALERT_LABELS = { percentage: "de variación", price_max: "de techo", price_min: "de piso" };
 
 /** Convierte "2026-10-19" en "19/10" (o "19/10/2026") sin pasar por Date, que correría el día por la zona horaria. */

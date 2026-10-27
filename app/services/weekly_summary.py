@@ -79,13 +79,13 @@ Basate únicamente en los datos que recibís en el mensaje. No inventes precios,
 otro dato que no esté ahí. Si un activo figura "sin datos", mencionalo sin especular.
 No hagas recomendaciones de compra ni de venta, ni sugieras operar.
 Cada precio está en la moneda indicada para su activo (ARS o USD): no conviertas ni compares montos entre monedas.
-Extensión máxima: unas 250 palabras.
+Escribí siempre los porcentajes con el símbolo % (por ejemplo, 2,96%), nunca "por ciento".
+Extensión máxima: unas 200 palabras.
 Respondé en texto plano, sin Markdown (sin asteriscos, numerales ni negritas). Organizá la respuesta en estas
-cuatro secciones, en este orden, cada una con su título solo en una línea y el texto debajo:
+tres secciones, en este orden, cada una con su título solo en una línea y el texto debajo:
 Panorama general
 Lo más destacado
 Alertas de la semana
-Para tener en cuenta
 Si no hubo alertas, decilo en "Alertas de la semana".
 Las cotizaciones solo existen de lunes a viernes, en horario de rueda: no menciones días posteriores al rango indicado ni hables de sábados o domingos."""
 
@@ -479,6 +479,8 @@ async def get_cached_summary(
     if (
         summary is None
         or summary.stats.get("week", {}).get("end") != week.end.isoformat()
+        or "Para tener en cuenta" in (summary.content or "")
+        or "por ciento" in (summary.content or "").lower()
         or not is_summary_current(week_offset, summary.created_at, week)
     ):
         return None
@@ -499,6 +501,8 @@ async def generate_weekly_summary(session: AsyncSession, user_id: int, week_offs
     if (
         saved is not None
         and saved.stats.get("week", {}).get("end") == week.end.isoformat()
+        and "Para tener en cuenta" not in (saved.content or "")
+        and "por ciento" not in (saved.content or "").lower()
         and is_cache_valid(week_offset, saved.created_at, week, now)
     ):
         return _cached_result(saved, week)
