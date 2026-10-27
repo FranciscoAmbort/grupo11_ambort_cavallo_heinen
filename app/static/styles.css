@@ -550,6 +550,33 @@ button.db-item:hover {
   color: #d8b4fe;
 }
 
+/* Selector Acción / CEDEAR de los activos del mercado: mismo aspecto que .db-badge */
+.db-select-tipo {
+  border: 0;
+  border-radius: 6px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: rgba(192, 132, 252, 0.16);
+  color: #d8b4fe;
+  cursor: pointer;
+}
+
+.db-select-tipo[data-tipo="stock"] {
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+}
+
+.db-select-tipo option {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.db-select-tipo:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 1px;
+}
+
 /* Botón Seguir / Siguiendo del catálogo */
 .db-btn-seguir {
   flex-shrink: 0;
