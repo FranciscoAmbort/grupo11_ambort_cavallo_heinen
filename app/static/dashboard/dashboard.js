@@ -724,21 +724,13 @@ function setSummaryStatus(message, { loading = false, error = false } = {}) {
   $("#resumen-rango").textContent = "";
 }
 
-/** Arma la fila de la tabla de un activo; si no tuvo lecturas en la semana, una sola celda "Sin datos". */
+/** Arma la fila de la tabla de un activo con lecturas en la semana. */
 function buildSummaryRow(asset) {
   const row = el("tr");
   const tickerCell = el("td");
   tickerCell.title = asset.name;
   tickerCell.append(el("span", "font-semibold text-white", asset.ticker));
   row.append(tickerCell);
-
-  if (!asset.has_data) {
-    const empty = el("td", null, "Sin datos en la semana");
-    empty.colSpan = 6;
-    empty.dataset.vacio = "true";
-    row.append(empty);
-    return row;
-  }
 
   for (const field of ["first_price", "last_price", "min_price", "max_price"]) {
     row.append(el("td", null, formatPrice(asset[field], asset.currency)));
@@ -815,7 +807,16 @@ function renderSummary(data) {
     row.append(cell);
     rows.append(row);
   }
-  for (const asset of stats.assets) rows.append(buildSummaryRow(asset));
+  // Solo los activos con lecturas van a la tabla; los demás se nombran en una línea aparte
+  const withData = stats.assets.filter((asset) => asset.has_data);
+  const missing = stats.assets.filter((asset) => !asset.has_data).map((asset) => asset.ticker);
+  for (const asset of withData) rows.append(buildSummaryRow(asset));
+  $("#resumen-tabla").classList.toggle("hidden", stats.assets.length > 0 && withData.length === 0);
+
+  const missingLine = $("#resumen-sin-datos");
+  missingLine.textContent = missing.length > 0 ? `Sin datos esta semana: ${missing.join(", ")}` : "";
+  missingLine.classList.toggle("hidden", missing.length === 0);
+
   $("#resumen-destacados").textContent = summaryHighlights(stats);
 
   // Si la IA no está disponible se muestran igual las estadísticas, con un aviso

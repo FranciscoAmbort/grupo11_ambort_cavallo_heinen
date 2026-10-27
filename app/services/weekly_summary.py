@@ -24,6 +24,7 @@ Funciones públicas:
   has_activity(stats)                                    → bool
   is_summary_current(week_offset, created_at, week)      → bool   (el GET lo puede mostrar)
   is_cache_valid(week_offset, created_at, week, now)     → bool   (el POST no regenera)
+  is_saved_summary_usable(stats, content, week)          → bool   (formato y versión del prompt)
   get_cached_summary(session, user_id, week_offset)      → SummaryResult | None
   generate_weekly_summary(session, user_id, week_offset) → SummaryResult
 """
@@ -53,6 +54,8 @@ VALID_WEEK_OFFSETS = (0, 1)
 EVENTS_DETAIL_LIMIT = 50
 # La semana en curso se puede regenerar recién cuando el resumen guardado tiene más de 1 hora
 CACHE_TTL_CURRENT_WEEK = timedelta(hours=1)
+# Versión del prompt; se guarda en stats["prompt_version"] y un resumen con otra versión se regenera
+PROMPT_VERSION = 2
 
 ALERT_TYPES = ("percentage", "price_max", "price_min")
 ALERT_TYPE_LABELS = {
@@ -76,7 +79,7 @@ Sos un analista que resume la actividad semanal de una cartera de inversiones de
 (acciones de BYMA, bonos soberanos y CEDEARs).
 Escribí en castellano rioplatense, con un tono claro y profesional.
 Basate únicamente en los datos que recibís en el mensaje. No inventes precios, noticias, causas ni ningún
-otro dato que no esté ahí. Si un activo figura "sin datos", mencionalo sin especular.
+otro dato que no esté ahí.
 No hagas recomendaciones de compra ni de venta, ni sugieras operar.
 Cada precio está en la moneda indicada para su activo (ARS o USD): no conviertas ni compares montos entre monedas.
 Escribí siempre los porcentajes con el símbolo % (por ejemplo, 2,96%), nunca "por ciento".
@@ -280,27 +283,24 @@ def build_prompt(stats: Mapping[str, Any]) -> str:
     else:
         dia_fin = WEEKDAY_NAMES[date.fromisoformat(week["end"]).weekday()]
         header = f"Semana del lunes {_fmt_date(week['start'])} al {dia_fin} {_fmt_date(week['end'])} ({state})."
+    # Los activos sin lecturas en la semana no entran al análisis
+    with_data = [asset for asset in stats["assets"] if asset["has_data"]]
     lines = [
         header,
         "Las cotizaciones se registran solo durante el horario de rueda. Horarios en hora de Argentina.",
         "",
-        f"ACTIVOS DE LA CARTERA ({len(stats['assets'])})",
+        f"ACTIVOS CON DATOS EN LA SEMANA ({len(with_data)})",
     ]
 
-    if not stats["assets"]:
-        lines.append("La cartera no tiene activos.")
-    for asset in stats["assets"]:
-        line = (
-            f"- {asset['ticker']} | {asset['name']} | "
-            f"{ASSET_TYPE_LABELS.get(asset['asset_type'], asset['asset_type'])} | {asset['currency']}"
-        )
-        if not asset["has_data"]:
-            lines.append(f"{line} | sin datos en la semana")
-            continue
+    if not with_data:
+        lines.append("No hay cotizaciones registradas en la semana.")
+    for asset in with_data:
         change = _fmt_pct(asset["change_pct"]) if asset["change_pct"] is not None else "no calculable"
         readings = asset["readings"]
         lines.append(
-            f"{line} | primer precio {_fmt_price(asset['first_price'])} | último {_fmt_price(asset['last_price'])}"
+            f"- {asset['ticker']} | {asset['name']} | "
+            f"{ASSET_TYPE_LABELS.get(asset['asset_type'], asset['asset_type'])} | {asset['currency']}"
+            f" | primer precio {_fmt_price(asset['first_price'])} | último {_fmt_price(asset['last_price'])}"
             f" | mínimo {_fmt_price(asset['min_price'])} | máximo {_fmt_price(asset['max_price'])}"
             f" | variación semanal {change} | {readings} {'lectura' if readings == 1 else 'lecturas'}"
         )
@@ -363,6 +363,22 @@ def is_cache_valid(week_offset: int, created_at: datetime, week: WeekRange, now:
     if week_offset == 0:
         return now - created_at < CACHE_TTL_CURRENT_WEEK
     return is_summary_current(week_offset, created_at, week)
+
+
+def is_saved_summary_usable(stats: Mapping[str, Any], content: str | None, week: WeekRange) -> bool:
+    """
+    Indica si un resumen guardado se armó con el formato actual y se puede reutilizar.
+
+    No sirve si es de otro rango de semana, si su texto tiene restos de formatos viejos
+    ("Para tener en cuenta", "por ciento") o si se generó con otra versión del prompt.
+    """
+    text = content or ""
+    return (
+        stats.get("week", {}).get("end") == week.end.isoformat()
+        and "Para tener en cuenta" not in text
+        and "por ciento" not in text.lower()
+        and stats.get("prompt_version") == PROMPT_VERSION
+    )
 
 
 # ── Acceso a la base ──────────────────────────────────────────────────────────
@@ -478,9 +494,7 @@ async def get_cached_summary(
     summary = await _load_summary(session, user_id, week)
     if (
         summary is None
-        or summary.stats.get("week", {}).get("end") != week.end.isoformat()
-        or "Para tener en cuenta" in (summary.content or "")
-        or "por ciento" in (summary.content or "").lower()
+        or not is_saved_summary_usable(summary.stats, summary.content, week)
         or not is_summary_current(week_offset, summary.created_at, week)
     ):
         return None
@@ -500,9 +514,7 @@ async def generate_weekly_summary(session: AsyncSession, user_id: int, week_offs
     saved = await _load_summary(session, user_id, week)
     if (
         saved is not None
-        and saved.stats.get("week", {}).get("end") == week.end.isoformat()
-        and "Para tener en cuenta" not in (saved.content or "")
-        and "por ciento" not in (saved.content or "").lower()
+        and is_saved_summary_usable(saved.stats, saved.content, week)
         and is_cache_valid(week_offset, saved.created_at, week, now)
     ):
         return _cached_result(saved, week)
@@ -526,6 +538,7 @@ async def generate_weekly_summary(session: AsyncSession, user_id: int, week_offs
         logger.warning("No se pudo generar el resumen semanal con IA: %s", exc)
         return _uncached(None, AI_FAILED_ERROR)
 
+    stats["prompt_version"] = PROMPT_VERSION
     insert_stmt = insert(WeeklySummary).values(
         user_id=user_id, week_start=week.start, stats=stats, content=content, model=model
     )

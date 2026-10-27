@@ -7,12 +7,15 @@ import pytest
 
 from app.services.weekly_summary import (
     EVENTS_DETAIL_LIMIT,
+    PROMPT_VERSION,
+    SYSTEM_INSTRUCTION,
     AlertEventRow,
     AssetWeekRow,
     build_prompt,
     build_stats,
     has_activity,
     is_cache_valid,
+    is_saved_summary_usable,
     is_summary_current,
     week_range,
 )
@@ -208,7 +211,10 @@ def test_build_prompt_includes_market_data(sample_stats):
     assert "- GGAL.BA | Grupo Financiero Galicia | acción | ARS | primer precio 5930.00" in prompt
     assert "variación semanal +3.21% | 1820 lecturas" in prompt
     assert "variación semanal -1.10%" in prompt
-    assert "- AAPL.BA | CEDEAR Apple Inc. | CEDEAR | ARS | sin datos en la semana" in prompt
+    # AAPL.BA no tiene lecturas: no entra al prompt y el título cuenta solo los 2 con datos
+    assert "ACTIVOS CON DATOS EN LA SEMANA (2)" in prompt
+    assert "AAPL.BA" not in prompt
+    assert "sin datos" not in prompt
     assert "- Mejor: GGAL.BA (+3.21%)" in prompt
     assert "- Peor: AL30 (-1.10%)" in prompt
     assert "ALERTAS DISPARADAS (2)" in prompt
@@ -222,6 +228,24 @@ def test_build_prompt_current_week_and_no_alerts(week):
     assert "(semana en curso, datos hasta ahora)" in prompt
     assert "1 lectura" in prompt and "1 lecturas" not in prompt
     assert "No se disparó ninguna alerta." in prompt
+
+
+def test_build_prompt_skips_assets_without_data(week):
+    # Solo hubo una alerta: ningún activo tiene lecturas en la semana
+    stats = build_stats(
+        week, [_no_data("AAPL.BA", asset_type="cedear"), _no_data("YPFD.BA")], {"price_min": 1},
+        [_event("GGAL.BA", "price_min", "100", "99", None, datetime(2026, 10, 13, 15, 0, tzinfo=timezone.utc))],
+    )
+    prompt = build_prompt(stats)
+    assert "ACTIVOS CON DATOS EN LA SEMANA (0)" in prompt
+    assert "No hay cotizaciones registradas en la semana." in prompt
+    assert "AAPL.BA" not in prompt
+    assert "YPFD.BA" not in prompt
+    assert "ALERTAS DISPARADAS (1)" in prompt
+
+
+def test_system_instruction_does_not_ask_to_mention_assets_without_data():
+    assert "sin datos" not in SYSTEM_INSTRUCTION
 
 
 def test_build_prompt_excludes_user_data(sample_stats):
@@ -263,3 +287,33 @@ def test_saved_last_week_is_shown_only_if_generated_after_week_closed():
     week = week_range(1, WEDNESDAY)
     assert is_summary_current(1, week.end_utc + timedelta(hours=1), week) is True
     assert is_summary_current(1, week.end_utc - timedelta(days=2), week) is False
+
+
+# ── is_saved_summary_usable ───────────────────────────────────────────────────
+
+def _saved_stats(week, **extra):
+    """Stats de un resumen guardado: las de build_stats más lo que se agrega al guardarlo."""
+    return {**build_stats(week, [_asset("GGAL.BA", "100", "105", "99", "106", 10)], {}, []), **extra}
+
+
+def test_saved_summary_usable_requires_prompt_version():
+    week = week_range(1, WEDNESDAY)
+    content = "Panorama general\nLa cartera subió 5,00%."
+    assert is_saved_summary_usable(_saved_stats(week, prompt_version=PROMPT_VERSION), content, week) is True
+    # Guardado antes de que existiera la versión del prompt
+    assert is_saved_summary_usable(_saved_stats(week), content, week) is False
+    # Guardado con otra versión del prompt
+    assert is_saved_summary_usable(_saved_stats(week, prompt_version=PROMPT_VERSION - 1), content, week) is False
+
+
+def test_saved_summary_usable_keeps_previous_checks():
+    week = week_range(1, WEDNESDAY)
+    stats = _saved_stats(week, prompt_version=PROMPT_VERSION)
+    # Otro rango de semana (por ejemplo, generado a mitad de semana con otro viernes)
+    other_week = week_range(0, WEDNESDAY)
+    assert is_saved_summary_usable(_saved_stats(other_week, prompt_version=PROMPT_VERSION), "texto", week) is False
+    # Restos de formatos viejos del texto
+    assert is_saved_summary_usable(stats, "Panorama general\nPara tener en cuenta: ...", week) is False
+    assert is_saved_summary_usable(stats, "Subió 2 Por Ciento en la semana.", week) is False
+    # Sin texto, pero con la versión y la semana correctas
+    assert is_saved_summary_usable(stats, None, week) is True
