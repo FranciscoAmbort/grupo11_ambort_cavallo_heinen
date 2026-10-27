@@ -61,6 +61,25 @@ class UserAssetAddRequest(BaseModel):
     asset_ids: list[int]
 
 
+class MarketCandidateOut(BaseModel):
+    """Activo del mercado que todavía no está en el catálogo (resultado de la búsqueda)."""
+
+    ticker: str
+    name: str
+    # "bond" en los bonos; None en Yahoo, donde el usuario elige acción o CEDEAR
+    asset_type: str | None
+    # Solo en los bonos: la búsqueda de Yahoo no trae la moneda
+    currency: str | None
+    # Yahoo: "cedear" o "stock" según el nombre, para preseleccionar el tipo
+    type_hint: str | None
+
+
+class CustomAssetRequest(BaseModel):
+    # Texto libre: el endpoint lo valida y responde 400 si el formato no es válido
+    ticker: str
+    asset_type: str
+
+
 class PriceHistoryPoint(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
