@@ -65,8 +65,21 @@ def sample_stats(week):
 def test_week_range_current_week_starts_on_monday():
     week = week_range(0, WEDNESDAY)
     assert week.start == date(2026, 10, 19)
-    assert week.end == date(2026, 10, 23)
+    assert week.end == date(2026, 10, 21)
     assert week.partial is True
+
+
+def test_week_range_and_prompt_on_tuesday():
+    # Martes 20/10/2026 15:00 en Argentina (UTC-3)
+    tuesday = datetime(2026, 10, 20, 18, 0, tzinfo=timezone.utc)
+    week = week_range(0, tuesday)
+    assert week.start == date(2026, 10, 19)
+    assert week.end == date(2026, 10, 20)
+    assert week.partial is True
+
+    prompt = build_prompt(build_stats(week, [_asset("GGAL.BA", "100", "105", "99", "106", 10)], {}, []))
+    assert "Semana del lunes 19/10/2026 al martes 20/10/2026 (semana en curso, datos hasta ahora)." in prompt
+    assert "viernes" not in prompt
 
 
 def test_week_range_converts_argentina_midnight_to_utc():
