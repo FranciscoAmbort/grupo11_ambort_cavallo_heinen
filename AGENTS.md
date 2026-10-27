@@ -437,7 +437,7 @@ El catálogo arranca con el seed y crece cuando un usuario sigue un activo del m
 - **Fuentes:**
   - **Bonos:** solo los de tipo "Soberano" de CompararFondos con precio no ambiguo, guardados sin sufijo (`GD46`). La moneda es USD si existe la especie `<base>D`; si no, ARS.
   - **Acciones y CEDEARs:** Yahoo Finance, con sufijo `.BA` y mercado `BUE`. La búsqueda usa `/v1/finance/search`; la validación, `/v8/finance/chart`, de donde salen el nombre y la moneda.
-  - `type_hint` es solo una sugerencia de acción o CEDEAR a partir del nombre corto de Yahoo: el tipo lo elige el usuario.
+  - `type_hint` decide automáticamente si un activo de Yahoo es acción o CEDEAR, a partir de su nombre corto: si dice "CEDEAR" es CEDEAR; si no, acción. El usuario no puede cambiar el tipo desde la interfaz.
 - **Límites y cachés en memoria** (por proceso; se reinician con cada deploy):
   - 60 búsquedas por minuto por usuario.
   - Lista de bonos: 10 minutos.
