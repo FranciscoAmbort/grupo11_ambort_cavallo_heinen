@@ -799,9 +799,11 @@ function buildSummaryText(content) {
 /** Dibuja el resumen: rango, tabla por activo, destacados, aviso de error y texto de la IA. */
 function renderSummary(data) {
   const { stats } = data;
-  $("#resumen-rango").textContent =
-    `Semana del ${formatIsoDay(data.week_start)} al ${formatIsoDay(data.week_end, true)}` +
-    (stats.week.partial ? " · en curso" : "");
+  const rangeText =
+    data.week_start === data.week_end
+      ? `Semana del ${formatIsoDay(data.week_start, true)}`
+      : `Semana del ${formatIsoDay(data.week_start)} al ${formatIsoDay(data.week_end, true)}`;
+  $("#resumen-rango").textContent = rangeText + (stats.week.partial ? " · en curso" : "");
 
   const rows = $("#resumen-filas");
   rows.textContent = "";

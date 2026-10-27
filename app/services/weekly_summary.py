@@ -61,6 +61,7 @@ ALERT_TYPE_LABELS = {
     "price_min": "precio mínimo (stop loss)",
 }
 ASSET_TYPE_LABELS = {"stock": "acción", "bond": "bono", "cedear": "CEDEAR"}
+WEEKDAY_NAMES = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 
 NO_ACTIVITY_MESSAGE = (
     "No hay cotizaciones registradas ni alertas disparadas en esta semana. "
@@ -86,7 +87,7 @@ Lo más destacado
 Alertas de la semana
 Para tener en cuenta
 Si no hubo alertas, decilo en "Alertas de la semana".
-Las cotizaciones solo existen de lunes a viernes, en horario de rueda: no menciones sábados ni domingos."""
+Las cotizaciones solo existen de lunes a viernes, en horario de rueda: no menciones días posteriores al rango indicado ni hables de sábados o domingos."""
 
 
 # ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -156,10 +157,12 @@ def week_range(week_offset: int, now: datetime | None = None) -> WeekRange:
 
     today = now.astimezone(WEEK_TZ).date()
     monday = today - timedelta(days=today.weekday(), weeks=week_offset)
+    friday = monday + timedelta(days=4)
+    end = min(today, friday) if week_offset == 0 else friday
     next_monday = monday + timedelta(days=7)
     return WeekRange(
         start=monday,
-        end=monday + timedelta(days=4),
+        end=end,
         start_utc=datetime.combine(monday, time.min, tzinfo=WEEK_TZ).astimezone(timezone.utc),
         end_utc=datetime.combine(next_monday, time.min, tzinfo=WEEK_TZ).astimezone(timezone.utc),
         partial=week_offset == 0,
@@ -272,8 +275,13 @@ def build_prompt(stats: Mapping[str, Any]) -> str:
     """Construye el mensaje para la IA a partir de las estadísticas (solo tickers, nombres y números)."""
     week = stats["week"]
     state = "semana en curso, datos hasta ahora" if week["partial"] else "semana cerrada"
+    if week["start"] == week["end"]:
+        header = f"Semana del lunes {_fmt_date(week['start'])} ({state})."
+    else:
+        dia_fin = WEEKDAY_NAMES[date.fromisoformat(week["end"]).weekday()]
+        header = f"Semana del lunes {_fmt_date(week['start'])} al {dia_fin} {_fmt_date(week['end'])} ({state})."
     lines = [
-        f"Semana del lunes {_fmt_date(week['start'])} al viernes {_fmt_date(week['end'])} ({state}).",
+        header,
         "Las cotizaciones se registran solo durante el horario de rueda. Horarios en hora de Argentina.",
         "",
         f"ACTIVOS DE LA CARTERA ({len(stats['assets'])})",
@@ -468,7 +476,11 @@ async def get_cached_summary(
     """Devuelve el resumen guardado de esa semana si existe y está vigente (ver is_summary_current)."""
     week = week_range(week_offset, now)
     summary = await _load_summary(session, user_id, week)
-    if summary is None or not is_summary_current(week_offset, summary.created_at, week):
+    if (
+        summary is None
+        or summary.stats.get("week", {}).get("end") != week.end.isoformat()
+        or not is_summary_current(week_offset, summary.created_at, week)
+    ):
         return None
     return _cached_result(summary, week)
 
@@ -484,7 +496,11 @@ async def generate_weekly_summary(session: AsyncSession, user_id: int, week_offs
     now = datetime.now(timezone.utc)
     week = week_range(week_offset, now)
     saved = await _load_summary(session, user_id, week)
-    if saved is not None and is_cache_valid(week_offset, saved.created_at, week, now):
+    if (
+        saved is not None
+        and saved.stats.get("week", {}).get("end") == week.end.isoformat()
+        and is_cache_valid(week_offset, saved.created_at, week, now)
+    ):
         return _cached_result(saved, week)
 
     stats = await fetch_week_stats(session, user_id, week)
