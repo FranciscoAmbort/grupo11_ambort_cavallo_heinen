@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -50,6 +50,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    """
+    Pide al navegador que revalide HTML, JS y CSS en cada carga (con ETag y 304) para que no
+    use versiones viejas después de un deploy. Las respuestas de /api no se tocan.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path != "/api" and not path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(assets_router, prefix="/api/assets", tags=["assets"])

@@ -76,6 +76,7 @@ El sistema resuelve un problema de I/O masivo: un proceso en segundo plano consu
 - Páginas HTML estáticas servidas por FastAPI desde `app/static/` (login, onboarding, dashboard, alertas y ajustes), con JavaScript nativo y Fetch API.
 - **Tailwind CSS** por CDN, con la configuración de colores y tipografías en `theme.js`; estilos propios en `styles.css`.
 - **Chart.js 4** por CDN para el gráfico de cotizaciones.
+- **Caché:** el servidor manda `Cache-Control: no-cache` en todo lo que no es `/api` (middleware en `app/main.py`), y los HTML cargan los scripts y estilos locales con `?v=AAAAMMDD`. Al cambiar un archivo estático, subí ese número en todos los HTML.
 
 ### 2.6 Infraestructura y despliegue
 
@@ -110,6 +111,7 @@ El sistema resuelve un problema de I/O masivo: un proceso en segundo plano consu
 │   ├── test_auth_cookie.py
 │   ├── test_catalog.py
 │   ├── test_market_series.py
+│   ├── test_static_cache.py
 │   └── test_weekly_summary.py
 └── app/
     ├── main.py                # App FastAPI, lifespan (worker) y montaje del frontend
